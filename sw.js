@@ -1,11 +1,14 @@
 // Guarda la app en el celular para que abra sin internet.
 // Al publicar una versión nueva del index.html, subí el número de VERSION.
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = 'mis-cuentas-' + VERSION;
 const FILES = ['./', './index.html', './lock.js', './nav.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 
+// cache:'reload' evita que se cuele una copia vieja guardada por el navegador.
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE)
+    .then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -24,7 +27,8 @@ self.addEventListener('fetch', e => {
   e.respondWith(
     caches.open(CACHE).then(async c => {
       const hit = await c.match(key, { ignoreSearch: true });
-      const net = fetch(req).then(r => { if (r.ok) c.put(key, r.clone()); return r; }).catch(() => hit);
+      const net = fetch(req.mode === 'navigate' ? './index.html' : req.url, { cache: 'no-cache' })
+        .then(r => { if (r.ok) c.put(key, r.clone()); return r; }).catch(() => hit);
       if (hit) { e.waitUntil(net); return hit; }
       return net;
     })

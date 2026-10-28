@@ -55,7 +55,8 @@ window.lockBlock=function(){
   const body=!ok?'<p class="muted" style="margin:4px 0 0">Este navegador no permite bloquear con huella. Abrí la app instalada desde Chrome.</p>'
     :on?'<p class="muted" style="margin:4px 0 8px">Activado: la app pide tu huella o el PIN del celular al abrirse y después de 1 minuto en segundo plano.</p><div class="actions"><button class="btn danger" data-lock="off">Desactivar bloqueo</button></div>'
     :'<p class="muted" style="margin:4px 0 8px">Pedí tu huella o el PIN del celular cada vez que abrís la app.</p><div class="actions"><button class="btn" data-lock="on">Activar bloqueo</button></div>';
-  return '<section id="lock-sec" style="margin-top:20px"><h2 class="sec">Bloqueo con huella</h2>'+body+'<p class="small muted lock-err" style="margin:6px 0 0"></p></section>';
+  return '<section id="lock-sec" style="margin-top:20px"><h2 class="sec">Bloqueo con huella</h2>'+body+'<p class="small muted lock-err" style="margin:6px 0 0"></p>'
+    +'<p class="small muted" style="margin:20px 0 0;text-align:center">Versión de la app: '+(window.APP_VERSION||'?')+'</p></section>';
 };
 function refresh(err){
   const s=document.getElementById('lock-sec'); if(!s) return;
