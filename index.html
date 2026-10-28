@@ -9,6 +9,14 @@
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
+<script>try{if(localStorage.getItem('mis-cuentas-lock')&&window.isSecureContext&&window.PublicKeyCredential)document.documentElement.classList.add('locked')}catch(_){}</script>
+<style>
+html.locked body>*:not(#lock){visibility:hidden!important}
+#lock{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center}
+#lock img{border-radius:18px;box-shadow:var(--shadow)}
+#lock h1{margin:8px 0 0;font-size:22px}
+#lock .lock-msg{margin:0 0 8px;color:var(--muted);max-width:280px}
+</style>
 <style>
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body{margin:0}
@@ -262,6 +270,8 @@ textarea{resize:vertical;line-height:1.4}
 </style>
 </head>
 <body>
+<script src="lock.js"></script>
+<script src="nav.js"></script>
 <div class="app">
   <aside class="side" id="side" aria-label="Secciones">
     <div class="side-brand">Mis cuentas</div>
@@ -773,7 +783,7 @@ function viewCuenta(){
 function viewMas(){
   const rows=[['rendimientos','Rendimientos','Cuánto rinde cada cuenta','rend'],['inversiones','Inversiones','Nominales de Balanz y cobros en dólares','inv'],['tarjetas','Tarjetas','Resúmenes y gasto por categoría','card'],['ajustes','Ajustes','Cuentas, dueños, tarjetas y categorías','gear']];
   const IC={inv:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="5"/><path d="M13 13.5A5 5 0 1 0 19 19"/><path d="M9 7v4M7.5 9H11"/></svg>',rend:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',card:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>',gear:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>'};
-  return '<div class="mlist">'+rows.map(r=>'<a class="mrow" href="#'+r[0]+'">'+IC[r[3]]+'<span><b>'+r[1]+'</b><span class="small muted">'+r[2]+'</span></span>'+CHEV+'</a>').join('')+'</div>'+backupBlock();
+  return '<div class="mlist">'+rows.map(r=>'<a class="mrow" href="#'+r[0]+'">'+IC[r[3]]+'<span><b>'+r[1]+'</b><span class="small muted">'+r[2]+'</span></span>'+CHEV+'</a>').join('')+'</div>'+backupBlock()+(window.lockBlock?window.lockBlock():'');
 }
 
 function typeLabel(t){return t==='in'?'Ingreso':t==='out'?'Egreso':t==='transfer'?'Transferencia':'Rendimiento'}
@@ -1555,7 +1565,7 @@ function importReview(){
   S.xPeriod=M.period; S.xCard=''; S.xCat=''; S.xLimit=100;
   const n=M.rows.filter(r=>r.inc).length;
   closeModal(); toast(n+' consumos guardados'+(learned?' · aprendí '+learned+' comercios':''));
-  if(location.hash!=='#tarjetas') location.hash='tarjetas'; else render();
+  if(navHash()!=='#tarjetas') navGo('tarjetas'); else render();
 }
 function setExpCat(id,cat){
   const e=S.exp.find(x=>x.id===id); if(!e) return;
@@ -1576,7 +1586,7 @@ document.addEventListener('click',e=>{
   else if(act==='upd') openModal('upd',{accId:id});
   else if(act==='mov-new') openModal('mov',{m:null,type:b.dataset.type||'',acc:b.dataset.acc||''});
   else if(act==='fab') openModal('menu');
-  else if(act==='goto-inv'){ closeModal(); if(location.hash==='#inversiones'){ S.hd=''; render(); } else location.hash='inversiones'; }
+  else if(act==='goto-inv'){ closeModal(); if(navHash()==='#inversiones'){ S.hd=''; render(); } else navGo('inversiones'); }
   else if(act==='hold-open'){ S.hd=id; S.selOp=''; render(); window.scrollTo(0,0); }
   else if(act==='hold-back'){ S.hd=''; S.selOp=''; render(); }
   else if(act==='hold-new') openModal('hold',{h:null});
@@ -1589,7 +1599,7 @@ document.addEventListener('click',e=>{
   else if(act==='op-del-no'){ S.confirmOp=''; render(); }
   else if(act==='op-del-yes'){ S.ops=S.ops.filter(y=>y.id!==id); S.confirmOp=''; S.selOp=''; persist(); render(); toast('Operación eliminada'); }
   else if(act==='cobro-new') openModal('cobro',{hold:b.dataset.hold||S.hd||''});
-  else if(act==='back'){ location.hash='mas'; }
+  else if(act==='back'){ navGo('mas'); }
   else if(act==='acc-open'){ S.acc=id; S.selMov=''; S.limit=100; render(); window.scrollTo(0,0); }
   else if(act==='acc-back'){ S.acc=''; S.selMov=''; render(); }
   else if(act==='grp-toggle'){ S.open[id]=!S.open[id]; render(); }
@@ -1684,7 +1694,7 @@ document.addEventListener('input',e=>{
 });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&S.modal) closeModal(); });
 const TABS=['resumen','movimientos','rendimientos','tarjetas','analisis','ajustes','mas','inversiones'];
-function readHash(){ const h=location.hash.replace('#',''); S.tab=TABS.indexOf(h)>-1?h:'resumen'; }
+function readHash(){ const h=navHash().replace('#',''); S.tab=TABS.indexOf(h)>-1?h:'resumen'; }
 window.addEventListener('hashchange',()=>{ readHash(); S.acc=''; S.hd=''; S.selMov=''; S.selOp=''; render(); window.scrollTo(0,0); });
 document.addEventListener('click',e=>{ const a=e.target.closest&&e.target.closest('a[data-tab]'); if(a&&(S.acc||S.hd)){ S.acc=''; S.hd=''; render(); } });
 

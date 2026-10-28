@@ -1,8 +1,8 @@
 // Guarda la app en el celular para que abra sin internet.
 // Al publicar una versión nueva del index.html, subí el número de VERSION.
-const VERSION = 'v1';
+const VERSION = 'v3';
 const CACHE = 'mis-cuentas-' + VERSION;
-const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
+const FILES = ['./', './index.html', './lock.js', './nav.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
