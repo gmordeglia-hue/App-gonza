@@ -16,8 +16,13 @@ html.locked body>*:not(#lock){visibility:hidden!important}
 #lock img{border-radius:18px;box-shadow:var(--shadow)}
 #lock h1{margin:8px 0 0;font-size:22px}
 #lock .lock-msg{margin:0 0 8px;color:var(--muted);max-width:280px}
+.debts{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);padding:14px 16px}
+.debts .eyebrow{margin-bottom:4px}
+.debt{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:8px 0;font-weight:500}
+.debt+.debt{border-top:1px solid var(--line)}
+.debt .amt{white-space:nowrap;font-weight:600}
 </style>
-<script>window.APP_VERSION='v5'</script>
+<script>window.APP_VERSION='v6'</script>
 <style>
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body{margin:0}
@@ -712,6 +717,38 @@ function stmtReminder(){
   if(!per||S.stmts.some(s=>s.period===per)) return '';
   return '<div class="notice info"><span>Resumen de tarjetas de '+esc(monthLabel(per))+': todavía no lo cargaste</span><button class="btn sm" data-act="stmt-new">Cargar</button></div>';
 }
+/* ---------- Deudas entre dueños ---------- */
+// armar-app.ps1 inserta este bloque dentro del código de la app, antes de viewResumen().
+// Si la plata de un dueño queda en negativo, usó plata de otro dueño: eso es una deuda.
+// Lo que falta se reparte entre los que tienen saldo positivo, en proporción a lo que tienen.
+// Si los negativos superan a los positivos (cuenta en rojo), solo cuenta lo que había de los otros.
+function debtPairs(ob){
+  const pos={}, out=[]; let P=0, N=0;
+  S.owners.forEach(o=>{ const v=ob[o.id]||0; if(v>0){ pos[o.id]=v; P+=v; } else N-=v; });
+  const f=N>P?P/N:1;
+  S.owners.forEach(o=>{
+    const v=ob[o.id]||0; if(v>=0) return;
+    const sp=allocate(Math.round(-v*f),pos);
+    for(const k in sp) if(k!==o.id&&pos[k]&&sp[k]>0) out.push({from:o.id,to:k,v:sp[k]});
+  });
+  return out.sort((a,b)=>b.v-a.v);
+}
+function debtRow(p,cur){
+  const txt=p.to==='yo'?esc(ownerName(p.from))+' te debe'
+    :p.from==='yo'?'Le debés a '+esc(ownerName(p.to))
+    :esc(ownerName(p.from))+' le debe a '+esc(ownerName(p.to));
+  const c=p.to==='yo'?'pos':p.from==='yo'?'neg':'';
+  return '<div class="debt"><span>'+txt+'</span>'+amt(money(p.v,cur),c)+'</div>';
+}
+// obByCur: {ARS:{dueño:centavos}, USD:{...}}. Con fo, solo las deudas de ese dueño.
+function debtsBlock(obByCur,fo,title){
+  let rows='';
+  ['ARS','USD'].forEach(c=>{
+    debtPairs(obByCur[c]||{}).filter(p=>!fo||p.from===fo||p.to===fo).forEach(p=>{ rows+=debtRow(p,c); });
+  });
+  return rows?'<section class="debts"><div class="eyebrow">'+title+'</div>'+rows+'</section>':'';
+}
+
 function viewResumen(){
   if(!S.accounts.length) return '<div class="empty"><h2>Todavía no hay cuentas</h2><p>Agregá la primera cuenta para empezar a llevar tus saldos.</p><button class="btn primary" data-act="acc-new">Agregar cuenta</button></div>';
   const accs=liveAccs(), arch=S.accounts.filter(a=>a.archived).sort(byOrder);
@@ -735,6 +772,7 @@ function viewResumen(){
     L+='<section class="usd-card"><div class="eyebrow">Total en dólares</div><div class="usd-fig">'+amt(money(tot.USD,'USD'),tot.USD<0?'neg':'')+'</div>'
       +(hasYU?'<div class="total-sub" style="margin-top:2px"><span>Rendimiento hoy '+amt(signed(yT.USD,'USD'),cls(yT.USD))+'</span><span>del mes '+amt(signed(yM.USD,'USD'),cls(yM.USD))+'</span></div>':'')+owLine(ot.USD,'USD')+'</section>';
   }
+  L+=debtsBlock(ot,fo,'Deudas');
   L+=stmtReminder();
   if(!S.movs.length&&accs.every(a=>!a.initial)) L+='<div class="note"><strong>Primer paso:</strong> cargá lo que tenés hoy en cada cuenta. Tocá una cuenta y entrá a <em>Editar cuenta</em> para completar el saldo inicial. Después anotá cada movimiento con el botón <strong>+</strong> y usá <em>Actualizar saldos</em> para los rendimientos.</div>';
   L+=backupNote();
@@ -770,6 +808,7 @@ function viewCuenta(){
   let h='<section class="total"><div class="eyebrow">Saldo</div><div class="big">'+amt(money(b,a.cur),b<0?'neg':'')+'</div>'
     +'<div class="total-sub">'+(ow?'<span>'+ow+'</span>':'<span>Todo es tuyo</span>')+'</div>'
     +(a.yields?'<div class="small muted" style="margin-top:10px">'+yieldStatus(a)+'</div>':'')+'</section>';
+  h+=debtsBlock({[a.cur==='USD'?'USD':'ARS']:ob},'','Deudas en esta cuenta');
   h+='<div class="actions">'+(a.yields?'<button class="btn primary" data-act="upd" data-id="'+esc(a.id)+'">Actualizar saldo</button>':'')
     +'<button class="btn'+(a.yields?'':' primary')+'" data-act="mov-new" data-acc="'+esc(a.id)+'">Nuevo movimiento</button><button class="btn ghost" data-act="acc-edit" data-id="'+esc(a.id)+'">Editar cuenta</button></div>';
   const saved=[S.fAcc,S.fOwner]; S.fAcc=a.id; S.fOwner='';
