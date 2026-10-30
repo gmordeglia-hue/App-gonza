@@ -1,8 +1,8 @@
 // Guarda la app en el celular para que abra sin internet.
 // Al publicar una versión nueva del index.html, subí el número de VERSION.
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE = 'mis-cuentas-' + VERSION;
-const FILES = ['./', './index.html', './lock.js', './nav.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
+const FILES = ['./', './index.html', './lock.js', './nav.js', './miles.js','./manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 
 // cache:'reload' evita que se cuele una copia vieja guardada por el navegador.
 self.addEventListener('install', e => {
