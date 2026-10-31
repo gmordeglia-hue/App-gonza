@@ -22,7 +22,7 @@ html.locked body>*:not(#lock){visibility:hidden!important}
 .debt+.debt{border-top:1px solid var(--line)}
 .debt .amt{white-space:nowrap;font-weight:600}
 </style>
-<script>window.APP_VERSION='v8'</script>
+<script>window.APP_VERSION='v10'</script>
 <style>
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body{margin:0}
@@ -400,6 +400,10 @@ function effect(m,id){
   return 0;
 }
 function effectOwner(m,id,oid){
+  const st=(m.settle&&m.settle[id]&&m.repay)?(oid===m.repay?m.settle[id]:oid==='yo'?-m.settle[id]:0):0;
+  return st+effectOwnerMov(m,id,oid);
+}
+function effectOwnerMov(m,id,oid){
   const e=effect(m,id); if(e===0) return 0;
   if(m.type==='yield'&&m.split) return m.split[oid]||0;
   return (m.owner||'yo')===oid?e:0;
@@ -414,6 +418,7 @@ function ownerBalances(a,upTo){
   const r={}; S.owners.forEach(o=>{r[o.id]=0}); r.yo=(r.yo||0)+(a.initial||0);
   for(const m of S.movs){
     if(upTo&&m.date>upTo) continue;
+    if(m.settle&&m.settle[a.id]&&m.repay){ const v=m.settle[a.id]; r[m.repay]=(r[m.repay]||0)+v; r.yo=(r.yo||0)-v; }
     const e=effect(m,a.id); if(e===0) continue;
     if(m.type==='yield'&&m.split){ for(const k in m.split) r[k]=(r[k]||0)+m.split[k]; }
     else{ const k=m.owner||'yo'; r[k]=(r[k]||0)+e; }
@@ -738,11 +743,14 @@ function debtPairs(ob){
 
 // Gastos que pagaste con tu plata para otro dueño sin que salgan de una cuenta (por ejemplo,
 // con la tarjeta) quedan en S.loans. Las devoluciones son ingresos tuyos marcados con repay.
+// Una devolución también puede saldar lo que ese dueño quedó debiendo en otras cuentas:
+// settle {cuenta:centavos} pasa esa parte del saldo de la cuenta de vos a él (ver ownerBalances).
 // Resultado: {ARS:{dueño:centavos}, USD:{...}}, positivo si ese dueño te debe.
+const settled=m=>{ let s=0; if(m.settle) for(const k in m.settle) s+=m.settle[k]; return s; };
 function loanNet(){
   const r={ARS:{},USD:{}};
   S.loans.forEach(l=>{ const c=l.cur==='USD'?'USD':'ARS'; r[c][l.owner]=(r[c][l.owner]||0)+l.cents; });
-  S.movs.forEach(m=>{ if(m.repay&&m.type==='in'&&(m.owner||'yo')==='yo'){ const c=curOf(m.account); r[c][m.repay]=(r[c][m.repay]||0)-m.cents; } });
+  S.movs.forEach(m=>{ if(m.repay&&m.type==='in'&&(m.owner||'yo')==='yo'){ const c=curOf(m.account); r[c][m.repay]=(r[c][m.repay]||0)-(m.cents-settled(m)); } });
   return r;
 }
 // Junta deudas entre los mismos dos dueños: si van y vienen, queda la diferencia.
@@ -761,15 +769,30 @@ function debtRow(p,cur,accId){
   const btn=p.to==='yo'?'<button class="link" data-act="repay-new" data-id="'+esc(p.from)+'" data-cur="'+cur+'" data-v="'+p.v+'"'+(accId?' data-acc="'+esc(accId)+'"':'')+'>Registrar devolución</button>':'';
   return '<div class="debt"><span>'+txt+(btn?'<br>'+btn:'')+'</span>'+amt(money(p.v,cur),c)+'</div>';
 }
-// obByCur: {ARS:{dueño:centavos}, USD:{...}}. Con fo, solo las deudas de ese dueño.
-// Sin accId (Inicio) también suma los gastos pagados por otros.
-function debtsBlock(obByCur,fo,title,accId){
-  const ln=accId?null:loanNet();
-  let rows='';
+// Deudas de toda la plata (lo que muestra Inicio): saldos de todas las cuentas más los gastos
+// pagados por otros. obByCur: {ARS:{dueño:centavos}, USD:{...}}; sin él, se suman las cuentas.
+function totalDebts(obByCur){
+  if(!obByCur){
+    obByCur={ARS:{},USD:{}};
+    liveAccs().forEach(a=>{ const ob=ownerBalances(a), t=obByCur[curOf(a.id)]; for(const k in ob) t[k]=(t[k]||0)+ob[k]; });
+  }
+  const ln=loanNet(), r={};
   ['ARS','USD'].forEach(c=>{
     const ps=debtPairs(obByCur[c]||{});
-    if(ln) for(const k in ln[c]){ const v=ln[c][k]; if(k==='yo'||!v) continue; ps.push(v>0?{from:k,to:'yo',v:v}:{from:'yo',to:k,v:-v}); }
-    mergePairs(ps).filter(p=>!fo||p.from===fo||p.to===fo).forEach(p=>{ rows+=debtRow(p,c,accId); });
+    for(const k in ln[c]){ const v=ln[c][k]; if(k==='yo'||!v) continue; ps.push(v>0?{from:k,to:'yo',v:v}:{from:'yo',to:k,v:-v}); }
+    r[c]=mergePairs(ps);
+  });
+  return r;
+}
+// Con fo, solo las deudas de ese dueño. Con accId, las de esa cuenta, pero nunca más de lo que
+// se debe en total: si el dueño tiene su plata en otra cuenta, en total no debe nada.
+function debtsBlock(obByCur,fo,title,accId){
+  const all=accId?totalDebts():totalDebts(obByCur);
+  let rows='';
+  ['ARS','USD'].forEach(c=>{
+    let ps=all[c];
+    if(accId) ps=debtPairs(obByCur[c]||{}).map(p=>{ const g=all[c].find(x=>x.from===p.from&&x.to===p.to); return {from:p.from,to:p.to,v:Math.min(p.v,g?g.v:0)}; }).filter(p=>p.v>0);
+    ps.filter(p=>!fo||p.from===fo||p.to===fo).forEach(p=>{ rows+=debtRow(p,c,accId); });
   });
   const n=accId?0:S.loans.filter(l=>!fo||fo==='yo'||l.owner===fo).length;
   const link=n?'<button class="link" data-act="loans-list">Gastos que pagaste por otros ('+n+')</button>':'';
@@ -819,16 +842,28 @@ function repayModal(d){
     +'<label for="r-note">Detalle (opcional)</label><input id="r-note" maxlength="120" autocomplete="off" placeholder="Devolución de '+esc(ownerName(d.owner))+'">'
     +'<p class="err" id="r-err" role="alert"></p><div class="sheet-actions">'+closeBtn+'Cancelar</button><button type="submit" class="btn primary">Guardar</button></div></form>';
 }
-// Primero salda los gastos pagados por otros (entra como plata tuya). Lo que sobra entra como
-// plata de ese dueño y compensa su saldo negativo en las cuentas.
+// La plata devuelta entra como tuya en la cuenta elegida. Salda, en este orden:
+// 1) lo que ese dueño debe en las cuentas (su saldo negativo en cada una, empezando por la
+//    cuenta desde la que se abrió, si hay), 2) los gastos pagados por otros.
+// Si sobra, el resto entra como plata de ese dueño.
 function saveRepay(){
   const d=S.modal, err=$('#r-err'), cents=parseAmt($('#r-amt').value), date=$('#r-date').value, acc=$('#r-acc').value;
   if(isNaN(cents)||cents<=0){ err.textContent='Ingresá un monto mayor a cero.'; return; }
   if(!date){ err.textContent='Elegí una fecha.'; return; }
-  const owed=d.acc?0:Math.max(0,loanNet()[d.cur][d.owner]||0), mine=Math.min(cents,owed), rest=cents-mine;
-  const base={type:'in',account:acc,date:date,note:$('#r-note').value.trim()||'Devolución de '+ownerName(d.owner),createdAt:Date.now()};
-  if(mine>0) S.movs.push(Object.assign({id:newId()},base,{cents:mine,owner:'yo',repay:d.owner}));
-  if(rest>0) S.movs.push(Object.assign({id:newId()},base,{cents:rest,owner:d.owner}));
+  const X=d.owner, tot={}, neg=[];
+  liveAccs().filter(a=>curOf(a.id)===d.cur).forEach(a=>{
+    const ob=ownerBalances(a); for(const k in ob) tot[k]=(tot[k]||0)+ob[k];
+    if((ob[X]||0)<0) neg.push({id:a.id,v:-ob[X]});
+  });
+  const pr=debtPairs(tot).find(p=>p.from===X&&p.to==='yo');
+  let cap=Math.min(cents,pr?pr.v:0), left=cents;
+  const settle={};
+  neg.sort((a,b)=>((b.id===d.acc)-(a.id===d.acc))||b.v-a.v).forEach(n=>{ const v=Math.min(n.v,cap); if(v>0){ settle[n.id]=v; cap-=v; left-=v; } });
+  left-=Math.min(left,Math.max(0,loanNet()[d.cur][X]||0));
+  const mine=cents-left;
+  const base={type:'in',account:acc,date:date,note:$('#r-note').value.trim()||'Devolución de '+ownerName(X),createdAt:Date.now()};
+  if(mine>0) S.movs.push(Object.assign({id:newId()},base,{cents:mine,owner:'yo',repay:X},Object.keys(settle).length?{settle:settle}:{}));
+  if(left>0) S.movs.push(Object.assign({id:newId()},base,{cents:left,owner:X}));
   persist(); closeModal(); onData(); toast('Devolución guardada');
 }
 function loansModal(){
@@ -1095,7 +1130,7 @@ function viewAnalisis(){
     const i=idx[m.date.slice(0,7)]; if(i===undefined||m.type==='transfer') continue;
     const c=curOf(m.account), r=R[i][c];
     if(m.type==='yield') r.y+=fo?ownerShare(m,fo):m.cents;
-    else{ if(fo&&(m.owner||'yo')!==fo) continue; if(m.type==='in') r.i+=m.cents; else if(m.type==='out') r.o+=m.cents; }
+    else{ if(fo&&((m.owner||'yo')!==fo||m.repay)) continue; if(m.type==='in') r.i+=m.cents; else if(m.type==='out') r.o+=m.cents; }
   }
   h+='<section><h2 class="sec">Cuentas: ingresos y egresos</h2><div class="filters"><select data-filter="aOwner" aria-label="De quién es la plata">'+opt('','Toda la plata',!fo)+S.owners.map(o=>opt(o.id,'Solo '+o.name,fo===o.id)).join('')+'</select></div>';
   if(!S.movs.length) h+='<div class="note">Cuando cargues movimientos, acá vas a ver cuánto entra y cuánto sale cada mes.</div>';
@@ -1578,7 +1613,7 @@ function saveMov(){
   if(to) data.to=to;
   if(toCents!=null) data.toCents=toCents;
   if(type!=='yield') data.owner=owner;
-  if(m&&m.hold) data.hold=m.hold; if(m&&m.repay) data.repay=m.repay;
+  if(m&&m.hold) data.hold=m.hold; if(m&&m.repay&&type===m.type&&owner===(m.owner||'yo')) data.repay=m.repay; if(data.repay&&m.settle&&owner==='yo'){ let left=cents; const st={}; for(const k in m.settle){ const v=Math.min(m.settle[k],left); if(v>0){ st[k]=v; left-=v; } } if(Object.keys(st).length) data.settle=st; }
   if(isY){
     if(m.base!=null) data.base=m.base; if(m.days!=null) data.days=m.days;
     if(m.split){ const w={}; for(const k in m.split) w[k]=Math.abs(m.split[k]); data.split=allocate(cents,w); }
