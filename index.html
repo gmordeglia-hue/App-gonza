@@ -22,7 +22,7 @@ html.locked body>*:not(#lock){visibility:hidden!important}
 .debt+.debt{border-top:1px solid var(--line)}
 .debt .amt{white-space:nowrap;font-weight:600}
 </style>
-<script>window.APP_VERSION='v11'</script>
+<script>window.APP_VERSION='v12'</script>
 <style>
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body{margin:0}
@@ -561,7 +561,7 @@ function putMov(id,data){
   else S.movs.push(Object.assign({id:newId()},data));
   persist(); onData();
 }
-function delMov(id){ S.movs=S.movs.filter(m=>m.id!==id); persist(); onData(); }
+function delMov(id){ const t=S.movs.find(m=>m.id===id); S.movs=S.movs.filter(m=>m.id!==id&&!(t&&t.pair&&m.pair===t.pair)); persist(); onData(); }
 
 /* ---------- Categorías automáticas ---------- */
 const normDesc=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').replace(/\b(merpago|mercadopago|dlo|dlocal)\b/g,' ').replace(/\s+/g,' ').trim();
@@ -779,24 +779,13 @@ function debtRow(p,cur,accId){
   const btn='<button class="link" data-act="repay-new" data-id="'+esc(p.from)+'" data-to="'+esc(p.to)+'" data-cur="'+cur+'" data-v="'+p.v+'"'+(accId?' data-acc="'+esc(accId)+'"':'')+'>'+(p.from==='yo'?'Devolver':'Registrar devolución')+'</button>';
   return '<div class="debt"><span>'+txt+'<br>'+btn+'</span>'+amt(money(p.v,cur),c)+'</div>';
 }
-// Deudas en total por las cuentas, por moneda. Cada deudor debe su saldo negativo sumando todas
-// las cuentas (si tiene plata en otra cuenta, debe menos o nada), repartido entre sus acreedores
-// según lo que les debe en cada cuenta. Así, saldar la deuda con uno no cambia la deuda con otro.
+// Deudas en total por las cuentas, por moneda: la suma de lo que se debe en cada cuenta.
+// Que el deudor tenga plata en otra cuenta no salda la deuda: para eso se registra la devolución
+// "con plata que ya está en una cuenta", que la pasa al acreedor.
 function accountDebts(){
-  const tot={ARS:{},USD:{}}, w={ARS:{},USD:{}}, r={ARS:[],USD:[]};
-  liveAccs().forEach(a=>{
-    const c=curOf(a.id), ob=ownerBalances(a);
-    for(const k in ob) tot[c][k]=(tot[c][k]||0)+ob[k];
-    debtPairs(ob).forEach(p=>{ const x=w[c][p.from]=w[c][p.from]||{}; x[p.to]=(x[p.to]||0)+p.v; });
-  });
-  ['ARS','USD'].forEach(c=>{
-    for(const D in w[c]){
-      let sw=0; for(const k in w[c][D]) sw+=w[c][D][k];
-      const owe=Math.min(-(tot[c][D]||0),sw); if(owe<=0) continue;
-      const sp=allocate(owe,w[c][D]);
-      for(const k in sp) if(sp[k]>0) r[c].push({from:D,to:k,v:sp[k]});
-    }
-  });
+  const ps={ARS:[],USD:[]}, r={};
+  liveAccs().forEach(a=>{ debtPairs(ownerBalances(a)).forEach(p=>ps[curOf(a.id)].push(p)); });
+  ['ARS','USD'].forEach(c=>{ r[c]=mergePairs(ps[c]); });
   return r;
 }
 // Deudas de toda la plata (lo que muestra Inicio): las de las cuentas más los gastos pagados por otros.
@@ -810,7 +799,7 @@ function totalDebts(){
   return r;
 }
 // Con fo, solo las deudas de ese dueño. Con accId, las de esa cuenta, pero nunca más de lo que
-// se debe en total: si el dueño tiene su plata en otra cuenta, en total no debe nada.
+// se debe en total (si en otra cuenta la deuda va al revés, se compensa).
 function debtsBlock(obByCur,fo,title,accId){
   const all=totalDebts();
   let rows='';
@@ -861,28 +850,48 @@ function repayWords(from,to){
   if(from==='yo') return {title:'Devolverle a '+T,owes:'Le debés ',how:'cuánto le devolvés',note:'Devolución a '+ownerName(to)};
   return {title:F+' le devuelve a '+T,owes:F+' le debe ',how:'cuánto le devolvió',note:'Devolución de '+ownerName(from)+' a '+ownerName(to)};
 }
+// Cuentas donde el deudor tiene plata guardada (para devolver con esa plata).
+function ownAccs(D,cur){ return liveAccs().filter(a=>curOf(a.id)===cur).map(a=>({a:a,v:ownerBalances(a)[D]||0})).filter(x=>x.v>0); }
+function repayAccOptions(d,how,sel){
+  if(how==='own') return ownAccs(d.from,d.cur).map(x=>opt(x.a.id,accLabel(x.a)+' (tiene '+money(x.v,d.cur)+')',x.a.id===sel)).join('');
+  const accs=liveAccs().filter(a=>curOf(a.id)===d.cur);
+  return accs.map(a=>opt(a.id,accLabel(a),a.id===sel)).join('');
+}
 // d: {from (deudor), to (acreedor), cur, v (lo que debe), acc (cuenta, si se abrió desde el detalle de una cuenta)}
 function repayModal(d){
   const accs=liveAccs().filter(a=>curOf(a.id)===d.cur), w=repayWords(d.from,d.to);
   if(!accs.length) return '<div class="sheet"><h2>Devolución</h2><p class="hint">No tenés ninguna cuenta en '+(d.cur==='USD'?'dólares':'pesos')+' para anotar la devolución.</p><div class="sheet-actions">'+closeBtn+'Cerrar</button></div></div>';
   const sel=accs.some(a=>a.id===d.acc)?d.acc:accs[0].id;
+  const whose=d.from==='yo'?'tuya':'de '+esc(ownerName(d.from));
+  const canOwn=ownAccs(d.from,d.cur).length>0;
   return '<form id="dr-form" class="sheet" novalidate><h2>'+w.title+'</h2>'
-    +'<p class="hint">'+w.owes+money(d.v,d.cur)+'. Anotá '+w.how+' y en qué cuenta quedó la plata: si fue una transferencia, la cuenta del banco; si fue en efectivo, Efectivo. La deuda se salda en todas las cuentas donde estaba.</p>'
+    +'<p class="hint">'+w.owes+money(d.v,d.cur)+'. La deuda se salda en todas las cuentas donde estaba, aunque la plata vaya a otra cuenta.</p>'
     +'<label for="r-amt">Monto</label><input id="r-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+centsToInput(d.v)+'" data-focus>'
-    +'<label for="r-acc">Dónde quedó la plata</label><select id="r-acc">'+accs.map(a=>opt(a.id,accLabel(a),a.id===sel)).join('')+'</select>'
+    +'<label for="r-how">Con qué plata</label><select id="r-how">'+opt('new','Entró plata (transferencia o efectivo)',true)+(canOwn?opt('own','Con plata '+whose+' que ya está en una cuenta',false):'')+'</select>'
+    +'<p class="hint" id="r-how-hint">Elegí en qué cuenta entró: si fue una transferencia, la del banco; si fue en efectivo, Efectivo.</p>'
+    +'<label for="r-acc">Dónde quedó la plata</label><select id="r-acc">'+repayAccOptions(d,'new',sel)+'</select>'
     +'<label for="r-date">Fecha</label><input id="r-date" type="date" value="'+todayStr()+'">'
     +'<label for="r-note">Detalle (opcional)</label><input id="r-note" maxlength="120" autocomplete="off" placeholder="'+esc(w.note)+'">'
     +'<p class="err" id="r-err" role="alert"></p><div class="sheet-actions">'+closeBtn+'Cancelar</button><button type="submit" class="btn primary">Guardar</button></div></form>';
 }
-// La plata devuelta entra en la cuenta elegida como plata del acreedor. Salda, en este orden:
-// 1) lo que el deudor debe en las cuentas (su saldo negativo en cada una, empezando por la
-//    cuenta desde la que se abrió, si hay), 2) los gastos pagados por otros.
-// Si sobra, el resto entra como plata del deudor.
+// La plata devuelta queda en la cuenta elegida como plata del acreedor. Salda, en este orden:
+// 1) lo que el deudor debe en las cuentas (lo que le debe al acreedor en cada una, empezando por
+//    la cuenta desde la que se abrió, si hay), 2) los gastos pagados por otros.
+// Si entró plata y sobra, el resto entra como plata del deudor.
+// Con plata que ya está en una cuenta (how 'own') no entra plata nueva: en esa cuenta se anotan
+// dos movimientos unidos por pair, un ingreso del acreedor y un egreso del deudor, y la plata
+// cambia de dueño. Solo se pasa lo que se debe.
 function saveRepay(){
-  const d=S.modal, err=$('#r-err'), cents=parseAmt($('#r-amt').value), date=$('#r-date').value, acc=$('#r-acc').value;
+  const d=S.modal, err=$('#r-err'), date=$('#r-date').value, acc=$('#r-acc').value, own=$('#r-how').value==='own';
+  let cents=parseAmt($('#r-amt').value);
   if(isNaN(cents)||cents<=0){ err.textContent='Ingresá un monto mayor a cero.'; return; }
   if(!date){ err.textContent='Elegí una fecha.'; return; }
+  if(!acc){ err.textContent='Elegí una cuenta.'; return; }
   const D=d.from, C=d.to, neg=[], is=p=>p.from===D&&p.to===C;
+  if(own){
+    const has=ownerBalances(accById(acc))[D]||0;
+    if(cents>has){ err.textContent=ownerName(D)+' tiene '+money(has,d.cur)+' en esa cuenta.'; return; }
+  }
   liveAccs().filter(a=>curOf(a.id)===d.cur).forEach(a=>{ const p=debtPairs(ownerBalances(a)).find(is); if(p) neg.push({id:a.id,v:p.v}); });
   const pr=accountDebts()[d.cur].find(is);
   let cap=Math.min(cents,pr?pr.v:0), left=cents;
@@ -891,10 +900,31 @@ function saveRepay(){
   const ln=loanNet()[d.cur], owedLoan=C==='yo'?Math.max(0,ln[D]||0):D==='yo'?Math.max(0,-(ln[C]||0)):0;
   const loan=Math.min(left,owedLoan); left-=loan;
   const main=cents-left;
-  const base={type:'in',account:acc,date:date,note:$('#r-note').value.trim()||repayWords(D,C).note,createdAt:Date.now()};
-  if(main>0) S.movs.push(Object.assign({id:newId()},base,{cents:main,owner:C,repay:D,loan:loan},C!=='yo'?{repayTo:C}:{},Object.keys(settle).length?{settle:settle}:{}));
-  if(left>0) S.movs.push(Object.assign({id:newId()},base,{cents:left,owner:D}));
-  persist(); closeModal(); onData(); toast('Devolución guardada');
+  if(own&&!main){ err.textContent='No hay deuda para saldar.'; return; }
+  const note=$('#r-note').value.trim()||repayWords(D,C).note+(own?' (con plata de '+accLabel(accById(acc))+')':'');
+  const base={type:'in',account:acc,date:date,note:note,createdAt:Date.now()};
+  const pair=own?newId():'';
+  if(main>0) S.movs.push(Object.assign({id:newId()},base,{cents:main,owner:C,repay:D,loan:loan},C!=='yo'?{repayTo:C}:{},Object.keys(settle).length?{settle:settle}:{},own?{pair:pair,own:true}:{}));
+  if(own) S.movs.push(Object.assign({id:newId()},base,{type:'out',cents:main,owner:D,repay:D,pair:pair,own:true}));
+  else if(left>0) S.movs.push(Object.assign({id:newId()},base,{cents:left,owner:D}));
+  persist(); closeModal(); onData(); toast(own&&left>0?'Devolución guardada: se pasaron '+money(main,d.cur)+', lo que se debía':'Devolución guardada');
+}
+// Al editar una devolución: conserva sus marcas y achica lo saldado si bajó el monto (primero
+// las cuentas, después los gastos pagados por otros). Si es una de las dos partes de una
+// devolución con plata que ya estaba en una cuenta, la otra parte toma el mismo monto, cuenta y fecha.
+function trimSettle(m,cents){
+  let left=cents; const st={};
+  for(const k in (m.settle||{})){ const v=Math.min(m.settle[k],left); if(v>0){ st[k]=v; left-=v; } }
+  return {settle:Object.keys(st).length?st:undefined,loan:Math.min(loanPart(m),left)};
+}
+function keepRepay(m,data,type,owner,cents,date){
+  if(!m||!m.repay||type!==m.type||owner!==(m.owner||'yo')) return;
+  data.repay=m.repay; if(m.repayTo) data.repayTo=m.repayTo;
+  if(m.type==='in') Object.assign(data,trimSettle(m,cents));
+  if(!m.pair) return;
+  data.pair=m.pair; data.own=true;
+  const pm=S.movs.find(x=>x.pair===m.pair&&x.id!==m.id);
+  if(pm){ pm.cents=cents; pm.date=date; pm.account=data.account; if(pm.type==='in') Object.assign(pm,trimSettle(pm,cents)); }
 }
 function loansModal(){
   const l=S.loans.slice().sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:(b.createdAt||0)-(a.createdAt||0));
@@ -916,6 +946,12 @@ document.addEventListener('click',e=>{
     S.loans=S.loans.filter(x=>x.id!==b.dataset.id); persist(); render();
     $('#modal').innerHTML=wrapModal(loansModal()); toast('Gasto eliminado');
   }
+});
+document.addEventListener('change',e=>{
+  if(e.target.id!=='r-how'||!S.modal||S.modal.kind!=='repay') return;
+  const own=e.target.value==='own', d=S.modal;
+  $('#r-acc').innerHTML=repayAccOptions(d,own?'own':'new',own?'':d.acc);
+  $('#r-how-hint').textContent=own?'La plata no se mueve: la parte que se devuelve pasa a ser '+(d.to==='yo'?'tuya':'de '+ownerName(d.to))+' en esa cuenta.':'Elegí en qué cuenta entró: si fue una transferencia, la del banco; si fue en efectivo, Efectivo.';
 });
 document.addEventListener('submit',e=>{
   const f=e.target.id;
@@ -1160,7 +1196,7 @@ function viewAnalisis(){
     const i=idx[m.date.slice(0,7)]; if(i===undefined||m.type==='transfer') continue;
     const c=curOf(m.account), r=R[i][c];
     if(m.type==='yield') r.y+=fo?ownerShare(m,fo):m.cents;
-    else{ if(fo&&((m.owner||'yo')!==fo||m.repay)) continue; if(m.type==='in') r.i+=m.cents; else if(m.type==='out') r.o+=m.cents; }
+    else{ if(m.own||(fo&&((m.owner||'yo')!==fo||m.repay))) continue; if(m.type==='in') r.i+=m.cents; else if(m.type==='out') r.o+=m.cents; }
   }
   h+='<section><h2 class="sec">Cuentas: ingresos y egresos</h2><div class="filters"><select data-filter="aOwner" aria-label="De quién es la plata">'+opt('','Toda la plata',!fo)+S.owners.map(o=>opt(o.id,'Solo '+o.name,fo===o.id)).join('')+'</select></div>';
   if(!S.movs.length) h+='<div class="note">Cuando cargues movimientos, acá vas a ver cuánto entra y cuánto sale cada mes.</div>';
@@ -1643,7 +1679,7 @@ function saveMov(){
   if(to) data.to=to;
   if(toCents!=null) data.toCents=toCents;
   if(type!=='yield') data.owner=owner;
-  if(m&&m.hold) data.hold=m.hold; if(m&&m.repay&&type===m.type&&owner===(m.owner||'yo')){ data.repay=m.repay; if(m.repayTo) data.repayTo=m.repayTo; let left=cents; const st={}; for(const k in (m.settle||{})){ const v=Math.min(m.settle[k],left); if(v>0){ st[k]=v; left-=v; } } if(Object.keys(st).length) data.settle=st; data.loan=Math.min(loanPart(m),left); }
+  if(m&&m.hold) data.hold=m.hold; keepRepay(m,data,type,owner,cents,date);
   if(isY){
     if(m.base!=null) data.base=m.base; if(m.days!=null) data.days=m.days;
     if(m.split){ const w={}; for(const k in m.split) w[k]=Math.abs(m.split[k]); data.split=allocate(cents,w); }
