@@ -1,6 +1,6 @@
 // Guarda la app en el celular para que abra sin internet.
 // Al publicar una versión nueva del index.html, subí el número de VERSION.
-const VERSION = 'v10';
+const VERSION = 'v11';
 const CACHE = 'mis-cuentas-' + VERSION;
 const FILES = ['./', './index.html', './lock.js', './nav.js', './miles.js','./manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 
