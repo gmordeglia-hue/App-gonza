@@ -22,7 +22,7 @@ html.locked body>*:not(#lock){visibility:hidden!important}
 .debt+.debt{border-top:1px solid var(--line)}
 .debt .amt{white-space:nowrap;font-weight:600}
 </style>
-<script>window.APP_VERSION='v13'</script>
+<script>window.APP_VERSION='v14'</script>
 <style>
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body{margin:0}
@@ -612,9 +612,12 @@ function backupNote(){
   return '<div class="notice warn"><span>'+(l?'Hace '+d+' días que no se guarda una copia.':'Todavía no guardaste ninguna copia.')+'</span><button class="btn sm" data-act="export">Guardar ahora</button></div>';
 }
 /* Copia automática: si pasaron AUTO_BK_DAYS días desde la última, se descarga sola al primer toque en la app
-   (los navegadores solo dejan descargar archivos después de que uno toca la pantalla). */
+   (los navegadores solo dejan descargar archivos después de que uno toca la pantalla). Solo en el celular:
+   en la computadora no se descarga nada solo. */
 const AUTO_BK_DAYS=2;
+function isPhone(){ try{ return matchMedia('(pointer:coarse)').matches&&Math.min(screen.width,screen.height)<700; }catch(_){ return false; } }
 function autoBackupDue(){
+  if(!isPhone()) return false;
   if(!S.movs.length&&!S.exp.length&&!S.ops.length) return false;
   const l=lastBackup(); return !l||daysBetween(l,todayStr())>=AUTO_BK_DAYS;
 }
@@ -625,7 +628,7 @@ function armAutoBackup(){
 function backupBlock(){
   const l=lastBackup();
   return '<section><h2 class="sec">Copia de seguridad</h2><p class="muted" style="margin:4px 0 8px">Tus datos viven solo en este celular. Si borrás los datos del navegador o cambiás de teléfono, se pierden.</p>'
-    +'<p class="muted" style="margin:0 0 8px"><strong style="color:var(--ink)">Copia automática:</strong> cada '+AUTO_BK_DAYS+' días, la primera vez que tocás la app se descarga sola una copia en la carpeta Descargas del celular. Podés borrar las viejas y quedarte con las últimas.</p>'
+    +'<p class="muted" style="margin:0 0 8px"><strong style="color:var(--ink)">Copia automática (solo en el celular):</strong> cada '+AUTO_BK_DAYS+' días, la primera vez que tocás la app se descarga sola una copia en la carpeta Descargas del celular. Podés borrar las viejas y quedarte con las últimas.</p>'
     +'<p style="margin:0 0 10px">'+(l?'Última copia: '+fmtDate(l):'Todavía no hiciste ninguna copia.')+'</p>'
     +'<div class="actions"><button class="btn" data-act="export">Guardar copia</button><button class="btn ghost" data-act="import">Restaurar copia</button></div>'
     +'<input type="file" id="imp-file" accept=".json,application/json" hidden></section>';
