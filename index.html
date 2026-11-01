@@ -240,6 +240,12 @@ fieldset.seg{display:flex;background:var(--line);border:0;border-radius:var(--r-
 textarea{resize:vertical;line-height:1.4}
 .xcat-sub{font-size:12px}
 .sheet.wide{max-width:640px}
+.fo-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center;margin:6px 0 0;color:var(--ink)}
+.fo-row span{font-weight:600}
+.debt{padding:12px 0;border-bottom:1px solid var(--line);display:grid;gap:8px}
+.debt-h{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.debt-pos{display:grid;gap:4px;margin-top:8px}
+.debt summary{cursor:pointer;font-size:13.5px;padding:2px 0}
 .mact{display:grid;grid-template-columns:40px 1fr;gap:12px;align-items:center;text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:var(--r-sm);padding:11px 12px;cursor:pointer;min-height:60px;width:100%;color:var(--ink);margin-top:8px}
 .mact b{display:block;font-weight:600}
 .mact span.s{font-size:12.5px;color:var(--muted)}
@@ -334,17 +340,18 @@ const amt=(txt,cls)=>'<span class="amt mono'+(cls?' '+cls:'')+'">'+txt+'</span>'
 const cls=c=>c>0?'pos':c<0?'neg':'';
 const sumC=l=>l.reduce((s,m)=>s+m.cents,0);
 
-function parseAmt(raw){
+function parseNum(raw){
   let s=String(raw==null?'':raw).trim().replace(/[^\d.,-]/g,'');
   if(!/\d/.test(s)) return NaN;
   const neg=s.charAt(0)==='-'; s=s.replace(/-/g,'');
   const lc=s.lastIndexOf(','), ld=s.lastIndexOf('.');
   if(lc>-1&&ld>-1){ s = lc>ld ? s.replace(/\./g,'').replace(',','.') : s.replace(/,/g,''); }
   else if(lc>-1){ s = (s.split(',').length>2) ? s.replace(/,/g,'') : s.replace(',','.'); }
-  else if(ld>-1){ const p=s.split('.'); if(p.length>2||p[p.length-1].length===3) s=s.replace(/\./g,''); }
+  else if(ld>-1){ const p=s.split('.'); if(p.length>2||(p[p.length-1].length===3&&p[0]!=='0')) s=s.replace(/\./g,''); }
   const n=Number(s); if(!isFinite(n)) return NaN;
-  return Math.round((neg?-n:n)*100);
+  return neg?-n:n;
 }
+function parseAmt(raw){ const n=parseNum(raw); return isNaN(n)?NaN:Math.round(n*100); }
 const centsToInput=c=>(c/100).toFixed(2).replace('.',',');
 const slug=s=>String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,30)||'x';
 const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -358,12 +365,17 @@ const SEED=[
   ['mercado-pago','Mercado Pago','Cuenta',true,4],
   ['mercado-pago-reservas','Mercado Pago','Reservas',false,4.4],
   ['naranja-x','Naranja X','Naranja X',true,5],
-  ['efectivo','Efectivo','Efectivo',false,6]
+  ['efectivo','Efectivo','Efectivo',false,6],
+  ['bbva-dolares','BBVA','Cuenta en dólares',false,1.5,'USD'],
+  ['bbva-tarjeta','BBVA','Tarjeta de crédito',false,2.8,'ARS','card'],
+  ['santander-tarjeta','Santander','Tarjeta de crédito',false,3.5,'ARS','card'],
+  ['naranja-x-frasco','Naranja X','Frasco',true,5.5]
 ];
+const SEED_V4=['bbva-dolares','bbva-tarjeta','santander-tarjeta','naranja-x-frasco'];
 const SEED_V2=['bbva-reservas','mercado-pago-reservas'];
 const SEED_V3=['efectivo'];
-const seedAcc=x=>({id:x[0],group:x[1],name:x[2],cur:'ARS',yields:x[3],initial:0,order:x[4],archived:false});
-const DEFAULT_OWNERS=[{id:'yo',name:'Mío'},{id:'grupo-misionero',name:'Grupo misionero'}];
+const seedAcc=x=>({id:x[0],group:x[1],name:x[2],cur:x[5]||'ARS',kind:x[6]||'',yields:x[3],initial:0,order:x[4],archived:false});
+const DEFAULT_OWNERS=[{id:'yo',name:'Gonza'},{id:'catequesis',name:'Catequesis'},{id:'grupo-misionero',name:'Grupo misionero'},{id:'parroquia',name:'Parroquia'}];
 const DEFAULT_CATS=[['super','Supermercado'],['comida','Comida y delivery'],['transporte','Transporte y combustible'],['servicios','Servicios y suscripciones'],['salud','Salud'],['hogar','Hogar'],['ropa','Ropa y calzado'],['entretenimiento','Entretenimiento'],['educacion','Educación'],['impuestos','Impuestos y cargos'],['regalos','Regalos y donaciones'],['otros','Otros'],['sin','Sin categorizar']];
 /* Palabras clave: una palabra o frase exacta; con * al final coincide con el inicio de una palabra. */
 const DEFAULT_RULES=[
@@ -399,29 +411,33 @@ function effect(m,id){
   if(m.type==='transfer') return (m.account===id?-m.cents:0)+(m.to===id?(m.toCents!=null?m.toCents:m.cents):0);
   return 0;
 }
-function effectOwner(m,id,oid){
-  const st=(m.settle&&m.settle[id]&&m.repay)?(oid===m.repay?m.settle[id]:oid===(m.repayTo||'yo')?-m.settle[id]:0):0;
-  return st+effectOwnerMov(m,id,oid);
+/* Cómo se reparte el efecto de un movimiento en una cuenta entre los dueños: [[dueño, importe], ...] */
+function parts(m,id){
+  const st=(m.settle&&m.settle[id]&&m.repay)?[[m.repay,m.settle[id]],[m.repayTo||'yo',-m.settle[id]]]:[];
+  if(m.type==='transfer'){
+    const o=m.owner||'yo', t=m.toOwner||o, r=[];
+    if(m.account===id) r.push([o,-m.cents]);
+    if(m.to===id) r.push([t,(m.toCents!=null?m.toCents:m.cents)]);
+    return r;
+  }
+  const e=effect(m,id); if(e===0) return st;
+  if(m.type==='yield'&&m.split) return st.concat(Object.keys(m.split).map(k=>[k,m.split[k]]));
+  return st.concat([[m.owner||'yo',e]]);
 }
-function effectOwnerMov(m,id,oid){
-  const e=effect(m,id); if(e===0) return 0;
-  if(m.type==='yield'&&m.split) return m.split[oid]||0;
-  return (m.owner||'yo')===oid?e:0;
-}
+function effectOwner(m,id,oid){ return parts(m,id).reduce((s,p)=>s+(p[0]===oid?p[1]:0),0); }
 function ownerShare(m,oid){ return m.split?(m.split[oid]||0):(oid==='yo'?m.cents:0); }
+const initOf=a=>a.initialOwners||{yo:a.initial||0};
 function balance(a,upTo){
   let b=a.initial||0;
   for(const m of S.movs){ if(upTo&&m.date>upTo) continue; b+=effect(m,a.id); }
   return b;
 }
 function ownerBalances(a,upTo){
-  const r={}; S.owners.forEach(o=>{r[o.id]=0}); r.yo=(r.yo||0)+(a.initial||0);
+  const r={}; S.owners.forEach(o=>{r[o.id]=0});
+  const ini=initOf(a); for(const k in ini) r[k]=(r[k]||0)+ini[k];
   for(const m of S.movs){
     if(upTo&&m.date>upTo) continue;
-    if(m.settle&&m.settle[a.id]&&m.repay){ const v=m.settle[a.id], to=m.repayTo||'yo'; r[m.repay]=(r[m.repay]||0)+v; r[to]=(r[to]||0)-v; }
-    const e=effect(m,a.id); if(e===0) continue;
-    if(m.type==='yield'&&m.split){ for(const k in m.split) r[k]=(r[k]||0)+m.split[k]; }
-    else{ const k=m.owner||'yo'; r[k]=(r[k]||0)+e; }
+    parts(m,a.id).forEach(p=>{ r[p[0]]=(r[p[0]]||0)+p[1]; });
   }
   return r;
 }
@@ -463,7 +479,7 @@ const KEY='mis-cuentas-v1', BK='mis-cuentas-copia';
 let storeOK=true;
 function persist(){
   try{
-    localStorage.setItem(KEY,JSON.stringify({v:3,accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,loans:S.loans}));
+    localStorage.setItem(KEY,JSON.stringify({v:4,accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,loans:S.loans}));
     storeOK=true; return true;
   }catch(_){ storeOK=false; return false; }
 }
@@ -482,11 +498,24 @@ function normalizeData(d,fresh){
     o.accounts=o.accounts.map(a=>(a.id==='mercado-pago'&&a.name==='Mercado Pago')?Object.assign({},a,{name:'Cuenta'}):a);
   }
   o.accounts=o.accounts.map(a=>a.cur==='USD'?a:Object.assign({},a,{cur:'ARS'}));
+  const mig4=!fresh&&!(d.v>=4);
+  if(mig4){
+    SEED.filter(x=>SEED_V4.indexOf(x[0])>-1).forEach(x=>{ if(!o.accounts.some(a=>a.id===x[0])) o.accounts.push(seedAcc(x)); });
+    o.accounts=o.accounts.map(a=>{
+      if(a.id==='mercado-pago-reservas') return Object.assign({},a,{yields:true,name:a.name==='Reservas'?'Reserva':a.name});
+      if(a.id==='naranja-x'&&a.name==='Naranja X') return Object.assign({},a,{name:'Cuenta'});
+      return a;
+    });
+  }
   o.movs=arr(d.movs).filter(m=>m&&str(m.id)&&str(m.date)&&typeof m.cents==='number'&&str(m.type)&&str(m.account));
   o.accounts=o.accounts.filter(a=>!(a.id==='mercado-pago-fondo'&&!a.initial&&!o.movs.some(m=>m.account===a.id||m.to===a.id)));
   o.owners=arr(d.owners).filter(x=>x&&str(x.id)&&str(x.name));
   if(!o.owners.length) o.owners=DEFAULT_OWNERS.map(x=>Object.assign({},x));
-  if(!o.owners.some(x=>x.id==='yo')) o.owners.unshift({id:'yo',name:'Mío'});
+  if(!o.owners.some(x=>x.id==='yo')) o.owners.unshift({id:'yo',name:'Gonza'});
+  if(mig4||fresh){
+    o.owners=o.owners.map(x=>(x.id==='yo'&&x.name==='Mío')?Object.assign({},x,{name:'Gonza'}):x);
+    DEFAULT_OWNERS.forEach(x=>{ if(!o.owners.some(y=>y.id===x.id||y.name.toLowerCase()===x.name.toLowerCase())) o.owners.push(Object.assign({},x)); });
+  }
   o.cards=arr(d.cards).filter(x=>x&&str(x.id)&&str(x.name));
   o.cats=arr(d.cats).filter(x=>x&&str(x.id)&&str(x.name));
   if(!o.cats.length) o.cats=DEFAULT_CATS.map(x=>({id:x[0],name:x[1]}));
@@ -494,7 +523,7 @@ function normalizeData(d,fresh){
   o.rules=arr(d.rules).filter(x=>x&&str(x.k)&&str(x.cat));
   o.stmts=arr(d.stmts).filter(x=>x&&str(x.id)&&str(x.card)&&str(x.period));
   o.exp=arr(d.exp).filter(x=>x&&str(x.id)&&str(x.date)&&typeof x.cents==='number'&&str(x.period));
-  o.hlds=Array.isArray(d.hlds)?d.hlds.filter(x=>x&&str(x.id)&&str(x.name)).map(x=>Object.assign({initial:0},x)):[{id:'ymcxo',name:'YMCXO',initial:0}];
+  o.hlds=Array.isArray(d.hlds)?d.hlds.filter(x=>x&&str(x.id)&&str(x.name)).map(x=>Object.assign({initial:0,kind:'nom',cur:'USD',px:[]},x)):[{id:'ymcxo',name:'YMCXO',initial:0,kind:'nom',cur:'USD',px:[]}];
   o.loans=arr(d.loans).filter(x=>x&&str(x.id)&&str(x.owner)&&str(x.date)&&typeof x.cents==='number');
   o.ops=arr(d.ops).filter(x=>x&&str(x.id)&&str(x.hold)&&str(x.date)&&typeof x.qty==='number'&&(x.type==='buy'||x.type==='sell'));
   return o;
@@ -506,6 +535,7 @@ function loadStore(){
   if(raw){
     let d=null;
     try{ d=JSON.parse(raw); }catch(_){ fail('Los datos guardados en este celular están dañados. No borres nada y avisale a Claude para recuperarlos.'); return false; }
+    if(d&&!(d.v>=4)){ try{ localStorage.setItem(KEY+'-v3',raw); }catch(_){} }
     applyData(normalizeData(d||{},false));
     persist();
     return true;
@@ -528,7 +558,7 @@ function backupBlock(){
     +'<input type="file" id="imp-file" accept=".json,application/json" hidden></section>';
 }
 function exportBackup(){
-  const data=JSON.stringify({v:3,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,loans:S.loans});
+  const data=JSON.stringify({v:4,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,loans:S.loans});
   const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
   const a=document.createElement('a'); a.href=url; a.download='mis-cuentas-'+todayStr()+'.json';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
@@ -977,12 +1007,17 @@ function viewResumen(){
   const chips=S.owners.length>1?'<div class="chips" role="group" aria-label="De quién es la plata">'+S.owners.slice().sort((a,b)=>(b.id==='yo')-(a.id==='yo')).map(o=>'<button class="chip" data-act="rown" data-id="'+esc(o.id)+'" aria-pressed="'+(fo===o.id)+'">'+esc(o.name)+'</button>').join('')+'<button class="chip" data-act="rown" data-id="" aria-pressed="'+(!fo)+'">Todo</button></div>':'';
   let L='<section class="total">'+chips+'<div class="eyebrow">Total en pesos</div><div class="big">'+amt(money(tot.ARS),tot.ARS<0?'neg':'')+'</div>';
   if(hasY) L+='<div class="stats"><div class="stat"><span class="small muted">Rendimiento hoy</span><b>'+amt(signed(yT.ARS),cls(yT.ARS))+'</b></div><div class="stat"><span class="small muted">Rendimiento del mes</span><b>'+amt(signed(yM.ARS),cls(yM.ARS))+'</b></div></div>';
-  L+=owLine(ot.ARS,'ARS')+'</section>';
+  const cardDebt=accs.filter(a=>a.kind==='card'&&!isU(a)).reduce((s,a)=>s+Math.min(0,val(a)),0);
+  L+=owLine(ot.ARS,'ARS')+(cardDebt<0?'<div class="small muted" style="margin-top:8px">Incluye lo que se debe de tarjetas: '+amt(money(cardDebt),'neg')+'</div>':'')+'</section>';
   if(showU){
     L+='<section class="usd-card"><div class="eyebrow">Total en dólares</div><div class="usd-fig">'+amt(money(tot.USD,'USD'),tot.USD<0?'neg':'')+'</div>'
       +(hasYU?'<div class="total-sub" style="margin-top:2px"><span>Rendimiento hoy '+amt(signed(yT.USD,'USD'),cls(yT.USD))+'</span><span>del mes '+amt(signed(yM.USD,'USD'),cls(yM.USD))+'</span></div>':'')+owLine(ot.USD,'USD')+'</section>';
   }
   L+=debtsBlock(ot,fo,'Deudas');
+  {
+    const IT=invTotals(fo);
+    if(IT.ARS||IT.USD) L+='<section class="usd-card"><div class="eyebrow">Cuotapartes (Balanz y otros fondos)</div><div class="usd-fig">'+amt(money(IT.ARS))+'</div>'+(IT.USD?'<div class="total-sub"><span>'+amt(money(IT.USD,'USD'))+'</span></div>':'')+'<div class="total-sub"><a class="link" href="#inversiones">Ver inversiones</a></div></section>';
+  }
   L+=stmtReminder();
   if(!S.movs.length&&accs.every(a=>!a.initial)) L+='<div class="note"><strong>Primer paso:</strong> cargá lo que tenés hoy en cada cuenta. Tocá una cuenta y entrá a <em>Editar cuenta</em> para completar el saldo inicial. Después anotá cada movimiento con el botón <strong>+</strong> y usá <em>Actualizar saldos</em> para los rendimientos.</div>';
   L+=backupNote();
@@ -1019,7 +1054,7 @@ function viewCuenta(){
     +'<div class="total-sub">'+(ow?'<span>'+ow+'</span>':'<span>Todo es tuyo</span>')+'</div>'
     +(a.yields?'<div class="small muted" style="margin-top:10px">'+yieldStatus(a)+'</div>':'')+'</section>';
   h+=debtsBlock({[a.cur==='USD'?'USD':'ARS']:ob},'','Deudas en esta cuenta',a.id);
-  h+='<div class="actions">'+(a.yields?'<button class="btn primary" data-act="upd" data-id="'+esc(a.id)+'">Actualizar saldo</button>':'')
+  h+='<div class="actions">'+(a.kind==='card'?'<button class="btn primary" data-act="mov-new" data-type="transfer" data-card="'+esc(a.id)+'">Pagar tarjeta</button>':'')+(a.yields?'<button class="btn primary" data-act="upd" data-id="'+esc(a.id)+'">Actualizar saldo</button>':'')
     +'<button class="btn'+(a.yields?'':' primary')+'" data-act="mov-new" data-acc="'+esc(a.id)+'">Nuevo movimiento</button><button class="btn ghost" data-act="acc-edit" data-id="'+esc(a.id)+'">Editar cuenta</button></div>';
   const saved=[S.fAcc,S.fOwner]; S.fAcc=a.id; S.fOwner='';
   const run=new Map(); let bb=a.initial||0;
@@ -1031,7 +1066,7 @@ function viewCuenta(){
   return h;
 }
 function viewMas(){
-  const rows=[['rendimientos','Rendimientos','Cuánto rinde cada cuenta','rend'],['inversiones','Inversiones','Nominales de Balanz y cobros en dólares','inv'],['tarjetas','Tarjetas','Resúmenes y gasto por categoría','card'],['ajustes','Ajustes','Cuentas, dueños, tarjetas y categorías','gear']];
+  const rows=[['rendimientos','Rendimientos','Cuánto rinde cada cuenta','rend'],['inversiones','Inversiones','Cuotapartes de Balanz, nominales y cobros','inv'],['tarjetas','Tarjetas','Resúmenes y gasto por categoría','card'],['ajustes','Ajustes','Cuentas, dueños, tarjetas y categorías','gear']];
   const IC={inv:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="5"/><path d="M13 13.5A5 5 0 1 0 19 19"/><path d="M9 7v4M7.5 9H11"/></svg>',rend:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',card:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>',gear:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>'};
   return '<div class="mlist">'+rows.map(r=>'<a class="mrow" href="#'+r[0]+'">'+IC[r[3]]+'<span><b>'+r[1]+'</b><span class="small muted">'+r[2]+'</span></span>'+CHEV+'</a>').join('')+'</div>'+backupBlock()+(window.lockBlock?window.lockBlock():'');
 }
@@ -1039,12 +1074,14 @@ function viewMas(){
 function typeLabel(t){return t==='in'?'Ingreso':t==='out'?'Egreso':t==='transfer'?'Transferencia':'Rendimiento'}
 function ownerHas(m,oid){
   if(m.type==='yield') return m.split?((m.split[oid]||0)!==0):oid==='yo';
+  if(m.type==='transfer') return (m.owner||'yo')===oid||(m.toOwner||m.owner||'yo')===oid;
   return (m.owner||'yo')===oid;
 }
 function movRow(m,run,noDate){
   const a=accById(m.account), b=m.to?accById(m.to):null;
-  const main=m.note?m.note:(m.type==='transfer'?'Transferencia':typeLabel(m.type));
-  const where=m.type==='transfer'?accLabel(a)+' → '+accLabel(b):accLabel(a);
+  const xo=m.type==='transfer'&&m.toOwner&&m.toOwner!==(m.owner||'yo');
+  const main=m.note?m.note:(m.type==='transfer'?(b&&b.kind==='card'?'Pago de tarjeta':xo?({repay:'Devolución',loan:'Préstamo',gift:'Aporte'}[m.kind]||'Traspaso'):'Movimiento interno'):typeLabel(m.type));
+  const where=(m.type==='transfer'&&m.to!==m.account)?accLabel(a)+' → '+accLabel(b):accLabel(a);
   let amtHtml;
   if(m.type==='transfer'&&!S.fAcc){ const c1=curOf(m.account), c2=m.to?curOf(m.to):c1; amtHtml=amt((m.toCents!=null&&c1!==c2)?money(m.cents,c1)+' → '+money(m.toCents,c2):money(m.cents,c1),'muted'); }
   else{
@@ -1055,7 +1092,8 @@ function movRow(m,run,noDate){
     amtHtml=amt(signed(e,S.fAcc?curOf(S.fAcc):curOf(m.account)),cls(e));
   }
   let sub=(noDate?'':'<span class="mono">'+fmtDate(m.date)+'</span> · ')+esc(m.note?typeLabel(m.type)+' · '+where:where);
-  if(m.type!=='yield'&&(m.owner||'yo')!=='yo') sub+=' · <span class="pill own">'+esc(ownerName(m.owner))+'</span>';
+  if(m.type!=='yield'&&(m.owner||'yo')!=='yo'&&!xo) sub+=' · <span class="pill own">'+esc(ownerName(m.owner))+'</span>';
+  if(xo) sub+=' · <span class="pill own">'+esc(ownerName(m.owner||'yo'))+' → '+esc(ownerName(m.toOwner))+'</span>';
   if(m.type==='yield'){
     const k=yieldMetrics(m);
     if(k) sub+=' · '+spct(k.p)+(k.days?' en '+k.days+(k.days===1?' día':' días'):'')+(k.tna!=null?' · TNA ≈ '+pf.format(k.tna*100)+'%':'');
@@ -1079,7 +1117,7 @@ function viewMovs(){
   const accsAll=S.accounts.slice().sort(byOrder);
   const months=Array.from(new Set(S.movs.map(m=>m.date.slice(0,7)))).sort().reverse();
   let run=null;
-  if(S.fAcc){ const a=accById(S.fAcc); if(a){ run=new Map(); let b=S.fOwner?(S.fOwner==='yo'?(a.initial||0):0):(a.initial||0); for(const m of S.movs){ const e=S.fOwner?effectOwner(m,a.id,S.fOwner):effect(m,a.id); if(e!==0){ b+=e; run.set(m.id,b); } } } }
+  if(S.fAcc){ const a=accById(S.fAcc); if(a){ run=new Map(); let b=S.fOwner?(initOf(a)[S.fOwner]||0):(a.initial||0); for(const m of S.movs){ const e=S.fOwner?effectOwner(m,a.id,S.fOwner):effect(m,a.id); if(e!==0){ b+=e; run.set(m.id,b); } } } }
   const q=(S.fQ||'').trim().toLowerCase();
   const hit=m=>{ if(!q) return true; const a=accById(m.account), b=m.to?accById(m.to):null; return (accLabel(a)+' '+(b?accLabel(b):'')+' '+(m.note||'')+' '+typeLabel(m.type)+' '+ownerName(m.owner||'yo')).toLowerCase().indexOf(q)>-1; };
   const list=S.movs.filter(m=>(!S.fAcc||m.account===S.fAcc||m.to===S.fAcc)&&(!S.fType||m.type===S.fType)&&(!S.fMonth||m.date.startsWith(S.fMonth))&&(!S.fOwner||ownerHas(m,S.fOwner))&&hit(m)).reverse();
@@ -1193,12 +1231,12 @@ function viewAnalisis(){
   const idx={}; ms.forEach((p,i)=>{idx[p]=i});
   const R=ms.map(()=>({ARS:{i:0,o:0,y:0},USD:{i:0,o:0,y:0}}));
   for(const m of S.movs){
-    const i=idx[m.date.slice(0,7)]; if(i===undefined||m.type==='transfer') continue;
+    const i=idx[m.date.slice(0,7)]; if(i===undefined||m.type==='transfer'||m.internal) continue;
     const c=curOf(m.account), r=R[i][c];
     if(m.type==='yield') r.y+=fo?ownerShare(m,fo):m.cents;
     else{ if(m.own||(fo&&((m.owner||'yo')!==fo||m.repay))) continue; if(m.type==='in') r.i+=m.cents; else if(m.type==='out') r.o+=m.cents; }
   }
-  h+='<section><h2 class="sec">Cuentas: ingresos y egresos</h2><div class="filters"><select data-filter="aOwner" aria-label="De quién es la plata">'+opt('','Toda la plata',!fo)+S.owners.map(o=>opt(o.id,'Solo '+o.name,fo===o.id)).join('')+'</select></div>';
+  h+='<section><h2 class="sec">Cuentas: ingresos y egresos</h2><div class="filters"><select data-filter="aOwner" aria-label="De quién es la plata">'+opt('','Todos los dueños',!fo)+S.owners.map(o=>opt(o.id,'Solo '+o.name,fo===o.id)).join('')+'</select></div>';
   if(!S.movs.length) h+='<div class="note">Cuando cargues movimientos, acá vas a ver cuánto entra y cuánto sale cada mes.</div>';
   else{
     h+='<div class="legend"><span><i class="sw-pos"></i>Ingresos</span><span><i class="sw-neg"></i>Egresos</span></div><div class="chart-box">'+barsSvg(ms.map(monthShort),[{name:'Ingresos',cls:'bar-pos',vals:R.map(r=>r.ARS.i),fmt:v=>money(v)},{name:'Egresos',cls:'bar-neg',vals:R.map(r=>r.ARS.o),fmt:v=>money(v)}],'$','Ingresos y egresos de las cuentas por mes, en pesos')+'</div>';
@@ -1206,7 +1244,7 @@ function viewAnalisis(){
     const list=(c)=>rowsFor(c).map(x=>{ const net=x.r.i-x.r.o+x.r.y; return '<div class="mov"><div><div class="mov-t">'+esc(monthLabel(x.p))+'</div><div class="mov-s">Ingresos '+amt(money(x.r.i,c))+' · Egresos '+amt(money(x.r.o,c))+(x.r.y?' · Rendimientos '+amt(money(x.r.y,c)):'')+'</div></div><div class="mov-amt">'+amt(signed(net,c),cls(net))+'</div></div>'; }).join('');
     const la=list('ARS'), lu=list('USD');
     h+=(la?'<div class="list-head" style="margin-top:10px">'+la+'</div>':'')+(lu?'<h3 class="sec" style="font-size:16px;margin-top:18px">En dólares</h3><div class="list-head">'+lu+'</div>':'');
-    h+='<p class="an-note">La cifra de cada mes es ingresos menos egresos más rendimientos. Las transferencias entre tus cuentas no cuentan. El pago de una tarjeta sale como egreso de la cuenta y los consumos de esa tarjeta están arriba: no se suman para no contar dos veces.</p>';
+    h+='<p class="an-note">La cifra de cada mes es ingresos menos egresos más rendimientos. Las transferencias entre tus cuentas no cuentan. Con un dueño elegido, los egresos son los gastos que fueron para ese dueño, aunque los haya pagado otro. Pagar una tarjeta que cargaste como cuenta es una transferencia y no cuenta: el gasto se cuenta cuando lo cargás en la tarjeta. Las compras de cuotapartes tampoco cuentan como gasto.</p>';
   }
   h+='</section>';
   return h;
@@ -1326,42 +1364,113 @@ function viewTarj(){
   return h+mgmtBlock();
 }
 
-const qtyNf=new Intl.NumberFormat('es-AR',{maximumFractionDigits:2});
+const qtyNf=new Intl.NumberFormat('es-AR',{maximumFractionDigits:6});
 const qtyFmt=n=>qtyNf.format(n);
+const pxNf=new Intl.NumberFormat('es-AR',{minimumFractionDigits:2,maximumFractionDigits:6});
+const pxFmt=(v,cur)=>(cur==='USD'?'US$ ':'$ ')+pxNf.format(v);
 const holdById=id=>S.hlds.find(h=>h.id===id);
-const r2=n=>Math.round(n*100)/100;
+const r2=n=>Math.round(n*1e6)/1e6; /* 6 decimales: las cuotapartes no son enteras */
 const holdQty=h=>r2(S.ops.filter(o=>o.hold===h.id).reduce((t,o)=>t+(o.type==='buy'?o.qty:-o.qty),h.initial||0));
+const holdQtyOwner=(h,oid)=>r2(S.ops.filter(o=>o.hold===h.id&&(o.owner||'yo')===oid).reduce((t,o)=>t+(o.type==='buy'?o.qty:-o.qty),(h.iowner||'yo')===oid?(h.initial||0):0));
 const holdCobros=h=>S.movs.filter(m=>m.hold===h.id&&m.type==='yield');
 const canDelHold=h=>!S.ops.some(o=>o.hold===h.id)&&!holdCobros(h).length;
+const lastPx=h=>{ const l=h.px||[]; return l.length?l[l.length-1]:null; };
+const holdCur=h=>h.cur==='USD'?'USD':'ARS';
+/* Cantidad, valor y costo promedio (de un dueño, o de todos si oid está vacío). Solo los fondos (cuotapartes) se valúan. */
+function holdStats(h,oid){
+  const px=lastPx(h); let q=0, c=0, known=true;
+  if(!oid||oid===(h.iowner||'yo')){ q+=h.initial||0; if(h.initial){ if(h.initialPx>0) c+=h.initial*h.initialPx; else known=false; } }
+  S.ops.filter(o=>o.hold===h.id&&(!oid||(o.owner||'yo')===oid)).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:((a.createdAt||0)-(b.createdAt||0))).forEach(o=>{
+    if(o.type==='buy'){ q+=o.qty; if(o.price>0) c+=o.qty*o.price; else known=false; }
+    else{ const f=q>0?Math.min(1,o.qty/q):0; c-=c*f; q-=o.qty; }
+  });
+  q=r2(q);
+  const fci=h.kind==='fci';
+  return {qty:q,px:px,value:(fci&&px)?Math.round(q*px.v*100):0,cost:Math.round(c*100),known:known&&q>0&&fci&&!!px};
+}
+function invTotals(oid){
+  const t={ARS:0,USD:0,costARS:0,costUSD:0,unknown:false};
+  S.hlds.filter(h=>h.kind==='fci').forEach(h=>{ const s=holdStats(h,oid), c=holdCur(h); t[c]+=s.value; if(s.known) t['cost'+c]+=s.cost; else if(s.qty>0) t.unknown=true; });
+  return t;
+}
+function gainTxt(value,cost,cur){
+  if(!(cost>0)) return '';
+  const g=value-cost;
+  return '<span>Ganancia '+amt(signed(g,cur),cls(g))+' ('+spct(g/cost)+')</span>';
+}
+function pxAge(px){
+  if(!px) return '';
+  const d=daysBetween(px.date,todayStr());
+  return d<=0?'<span class="pill ok">Valor de hoy</span>':'<span class="pill stale">Valor de hace '+d+(d===1?' día':' días')+'</span>';
+}
 function viewInv(){
   const hd=holdById(S.hd); if(S.hd&&!hd) S.hd='';
   if(hd) return viewHold(hd);
+  const fo=S.owners.some(o=>o.id===S.iOwner)?S.iOwner:'';
   const yr=todayStr().slice(0,4), all=S.movs.filter(m=>m.hold&&m.type==='yield');
-  let h='<section class="usd-card"><div class="eyebrow">Cobrado en dólares</div><div class="usd-fig">'+amt(money(sumC(all.filter(m=>m.date.startsWith(yr))),'USD'))+'</div><div class="total-sub" style="margin-top:2px"><span>en '+esc(yr)+'</span><span>Total '+amt(money(sumC(all),'USD'))+'</span></div></section>';
-  h+='<div class="actions"><button class="btn primary" data-act="op-new">Compra o venta</button><button class="btn" data-act="cobro-new">Registrar cobro</button><button class="btn ghost" data-act="hold-new">Nueva tenencia</button></div>';
-  if(!S.hlds.length) return h+'<div class="note">Todavía no hay tenencias. Agregá una con su nombre, por ejemplo YMCXO.</div>';
-  h+='<div class="blist">'+S.hlds.map(x=>{
-    const cb=holdCobros(x), last=cb[cb.length-1];
-    return '<div class="bank"><button data-act="hold-open" data-id="'+esc(x.id)+'"><span><span class="nm">'+esc(x.name)+'</span><span class="small muted" style="display:block">'+(last?'Último cobro '+fmtDate(last.date,true):'Sin cobros cargados')+'</span></span><span class="bam">'+amt(qtyFmt(holdQty(x)))+'<span class="alt">nominales</span></span>'+CHEV+'</button></div>';
+  const cv=m=>fo?ownerShare(m,fo):m.cents;
+  const sum=l=>l.reduce((s,m)=>s+cv(m),0);
+  let h='';
+  if(S.owners.length>1) h+='<div class="chips" role="group" aria-label="De quién son">'+S.owners.slice().sort((a,b)=>(b.id==='yo')-(a.id==='yo')).map(o=>'<button class="chip" data-act="iown" data-id="'+esc(o.id)+'" aria-pressed="'+(fo===o.id)+'">'+esc(o.name)+'</button>').join('')+'<button class="chip" data-act="iown" data-id="" aria-pressed="'+(!fo)+'">Todo</button></div>';
+  const T=invTotals(fo), funds=S.hlds.filter(x=>x.kind==='fci');
+  if(funds.length){
+    h+='<section class="total"><div class="eyebrow">Cuotapartes valuadas</div><div class="big">'+amt(money(T.ARS))+'</div>'
+      +(T.USD?'<div class="total-sub"><span>'+amt(money(T.USD,'USD'))+'</span></div>':'')
+      +'<div class="total-sub">'+gainTxt(T.ARS,T.costARS,'ARS')+gainTxt(T.USD,T.costUSD,'USD')+'</div>'
+      +(T.unknown?'<p class="hint" style="margin:8px 0 0">Algunos fondos no tienen el precio de compra, así que no entran en la ganancia.</p>':'')+'</section>';
+  }
+  h+='<section class="usd-card"><div class="eyebrow">Cobrado en dólares</div><div class="usd-fig">'+amt(money(sum(all.filter(m=>m.date.startsWith(yr))),'USD'))+'</div><div class="total-sub" style="margin-top:2px"><span>en '+esc(yr)+'</span><span>Total '+amt(money(sum(all),'USD'))+'</span></div></section>';
+  h+='<div class="actions"><button class="btn primary" data-act="op-new">Compra o venta</button><button class="btn" data-act="px-new">Actualizar valores</button><button class="btn" data-act="cobro-new">Registrar cobro</button><button class="btn ghost" data-act="hold-new">Nueva tenencia</button></div>';
+  if(!S.hlds.length) return h+'<div class="note">Todavía no hay tenencias. Agregá un fondo de Balanz con su nombre (por ejemplo, Balanz Capital Money Market) o un bono por sus nominales.</div>';
+  const list=S.hlds.filter(x=>!fo||holdStats(x,fo).qty!==0);
+  h+='<div class="blist">'+list.map(x=>{
+    const s=holdStats(x,fo), cb=holdCobros(x), last=cb[cb.length-1], c=holdCur(x);
+    let sub, right;
+    if(x.kind==='fci'){
+      sub=s.px?'Cuotaparte '+pxFmt(s.px.v,c)+' · '+fmtDate(s.px.date,true)+' '+pxAge(s.px):'Falta cargar el valor de la cuotaparte';
+      right='<span class="bam">'+amt(s.px?money(s.value,c):'—')+'<span class="alt">'+qtyFmt(s.qty)+' cuotapartes</span></span>';
+    }else{
+      sub=last?'Último cobro '+fmtDate(last.date,true):'Sin cobros cargados';
+      right='<span class="bam">'+amt(qtyFmt(s.qty))+'<span class="alt">nominales</span></span>';
+    }
+    return '<div class="bank"><button data-act="hold-open" data-id="'+esc(x.id)+'"><span><span class="nm">'+esc(x.name)+'</span><span class="small muted" style="display:block">'+sub+'</span></span>'+right+CHEV+'</button></div>';
   }).join('')+'</div>';
-  h+='<p class="an-note">Se anotan los nominales, no su valor. Para pasar plata entre tus cuentas usá una transferencia. Los cobros entran como rendimiento en la cuenta en dólares que elijas.</p>';
+  h+='<p class="an-note">Cada compra o venta se anota con su dueño. Si elegís una cuenta, la plata sale o entra de ahí y no cuenta como gasto. Los valores de cuotaparte los cargás vos cuando quieras ver cuánto valen.</p>';
   return h;
 }
 function opRow(o){
-  const sel=S.selOp===o.id||S.confirmOp===o.id;
+  const sel=S.selOp===o.id||S.confirmOp===o.id, x=holdById(o.hold), fci=x&&x.kind==='fci';
   const acts=S.confirmOp===o.id
     ?'<span>¿Eliminar esta operación?</span><button class="btn sm danger" data-act="op-del-yes" data-id="'+esc(o.id)+'">Sí, eliminar</button><button class="btn sm" data-act="op-del-no">No</button>'
     :'<button class="link" data-act="op-edit" data-id="'+esc(o.id)+'">Editar</button><button class="link danger" data-act="op-del-ask" data-id="'+esc(o.id)+'">Eliminar</button>';
-  return '<div class="mov'+(sel?' sel':'')+'" data-act="op-sel" data-id="'+esc(o.id)+'"><div><div class="mov-t">'+(o.type==='buy'?'Compra':'Venta')+'</div><div class="mov-s"><span class="mono">'+fmtDate(o.date)+'</span>'+(o.note?' · '+esc(o.note):'')+'</div></div><div class="mov-amt">'+amt((o.type==='buy'?'+':'−')+qtyFmt(o.qty))+'</div>'+(sel?'<div class="mov-actions">'+acts+'</div>':'')+'</div>';
+  const ow=(o.owner||'yo')!=='yo'?' · <span class="pill own">'+esc(ownerName(o.owner))+'</span>':'';
+  const pr=o.price>0?' · a '+esc(pxFmt(o.price,holdCur(x||{}))):'';
+  return '<div class="mov'+(sel?' sel':'')+'" data-act="op-sel" data-id="'+esc(o.id)+'"><div><div class="mov-t">'+(o.type==='buy'?'Compra':'Venta')+'</div><div class="mov-s"><span class="mono">'+fmtDate(o.date)+'</span>'+pr+ow+(o.note?' · '+esc(o.note):'')+'</div></div><div class="mov-amt">'+amt((o.type==='buy'?'+':'−')+qtyFmt(o.qty))+(fci&&o.price>0?'<div class="mov-run">'+amt(money(Math.round(o.qty*o.price*100),holdCur(x)))+'</div>':'')+'</div>'+(sel?'<div class="mov-actions">'+acts+'</div>':'')+'</div>';
 }
 function viewHold(x){
-  const cb=holdCobros(x), q=holdQty(x);
-  let h='<section class="total"><div class="eyebrow">Nominales</div><div class="big">'+amt(qtyFmt(q))+'</div><div class="total-sub"><span>Cobrado '+amt(money(sumC(cb),'USD'))+'</span></div></section>'
-    +'<div class="actions"><button class="btn primary" data-act="op-new" data-type="buy" data-hold="'+esc(x.id)+'">Compra</button><button class="btn" data-act="op-new" data-type="sell" data-hold="'+esc(x.id)+'">Venta</button><button class="btn" data-act="cobro-new" data-hold="'+esc(x.id)+'">Registrar cobro</button><button class="btn ghost" data-act="hold-edit" data-id="'+esc(x.id)+'">Editar</button></div>';
+  const cb=holdCobros(x), s=holdStats(x,''), c=holdCur(x), fci=x.kind==='fci';
+  let h='<section class="total"><div class="eyebrow">'+(fci?'Cuotapartes':'Nominales')+'</div><div class="big">'+amt(qtyFmt(s.qty))+'</div>';
+  if(fci){
+    h+='<div class="total-sub"><span>Valen '+amt(s.px?money(s.value,c):'—')+'</span>'+(s.px?'<span>Cuotaparte '+amt(pxFmt(s.px.v,c))+'</span>':'')+'</div>';
+    if(s.px) h+='<div class="total-sub">'+pxAge(s.px)+(s.known?gainTxt(s.value,s.cost,c):'')+'</div>';
+    else h+='<p class="hint" style="margin:8px 0 0">Cargá el valor de la cuotaparte para ver cuánto vale.</p>';
+  }
+  h+='<div class="total-sub"><span>Cobrado '+amt(money(sumC(cb),'USD'))+'</span></div>';
+  const owners=S.owners.map(o=>({o:o,s:holdStats(x,o.id)})).filter(z=>z.s.qty!==0);
+  if(owners.length>1||(owners.length===1&&owners[0].o.id!=='yo')) h+='<div class="total-sub owners">'+owners.map(z=>'<span>'+esc(z.o.name)+' '+amt(qtyFmt(z.s.qty))+(fci&&z.s.px?' · '+amt(money(z.s.value,c)):'')+'</span>').join('')+'</div>';
+  h+='</section>';
+  h+='<div class="actions"><button class="btn primary" data-act="op-new" data-type="buy" data-hold="'+esc(x.id)+'">Compra</button><button class="btn" data-act="op-new" data-type="sell" data-hold="'+esc(x.id)+'">Venta</button>'+(fci?'<button class="btn" data-act="px-new" data-hold="'+esc(x.id)+'">Actualizar valor</button>':'')+'<button class="btn" data-act="cobro-new" data-hold="'+esc(x.id)+'">Registrar cobro</button><button class="btn ghost" data-act="hold-edit" data-id="'+esc(x.id)+'">Editar</button></div>';
+  if(fci&&(x.px||[]).length){
+    const ps=x.px.slice(-10).reverse();
+    h+='<h2 class="sec" style="margin:4px 0 0">Valor de la cuotaparte</h2><div class="list-head">'+ps.map((p,i,arr)=>{
+      const prev=x.px[x.px.length-1-i-1], d=prev&&prev.v>0?(p.v-prev.v)/prev.v:null;
+      return '<div class="mov"><div><div class="mov-t">'+esc(pxFmt(p.v,c))+'</div><div class="mov-s"><span class="mono">'+fmtDate(p.date)+'</span></div></div><div class="mov-amt">'+(d!=null?amt(spct(d),cls(d)):'')+'</div></div>';
+    }).join('')+'</div>';
+  }
   const items=S.ops.filter(o=>o.hold===x.id).map(o=>({d:o.date,c:o.createdAt||0,h:opRow(o)})).concat(cb.map(m=>({d:m.date,c:m.createdAt||0,h:movRow(m,null)})));
   items.sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:b.c-a.c);
   h+='<h2 class="sec" style="margin:4px 0 0">Historial</h2>';
-  const ini=x.initial?'<div class="mov"><div><div class="mov-t">Tenencia inicial</div><div class="mov-s">Antes de las operaciones cargadas</div></div><div class="mov-amt">'+amt(qtyFmt(x.initial))+'</div></div>':'';
+  const ini=x.initial?'<div class="mov"><div><div class="mov-t">Tenencia inicial</div><div class="mov-s">'+esc(ownerName(x.iowner||'yo'))+' · antes de las operaciones cargadas</div></div><div class="mov-amt">'+amt(qtyFmt(x.initial))+'</div></div>':'';
   h+=(items.length||ini)?'<div class="list-head">'+items.map(i=>i.h).join('')+ini+'</div>':'<div class="note">Todavía no cargaste compras, ventas ni cobros.</div>';
   return h;
 }
@@ -1388,38 +1497,61 @@ function accOptions(sel,extra){
   const ids=new Set(liveAccs().map(a=>a.id)); (extra||[]).forEach(i=>i&&ids.add(i));
   return S.accounts.filter(a=>ids.has(a.id)).sort(byOrder).map(a=>'<option value="'+esc(a.id)+'"'+(a.id===sel?' selected':'')+'>'+esc(accLabel(a))+'</option>').join('');
 }
-function movModal(m,pt,pa){
+function ownOpts(sel){ return S.owners.map(o=>opt(o.id,o.name,o.id===sel)).join(''); }
+function bestAcc(owner,cur){
+  let best='',bv=0;
+  liveAccs().forEach(a=>{ if(a.kind==='card'||curOf(a.id)!==cur) return; const v=ownerBalances(a)[owner]||0; if(v>bv){ bv=v; best=a.id; } });
+  return best;
+}
+function movModal(m,pt,pa,pay){
+  pay=pay||{};
   const isY=m&&m.type==='yield', type=m?m.type:(pt||'in');
   const seg=isY?'':'<fieldset class="seg"><legend class="muted" style="position:absolute;left:-9999px">Tipo</legend>'
     +[['in','Ingreso'],['out','Egreso'],['transfer','Transferencia']].map(t=>'<label><input type="radio" name="mtype" value="'+t[0]+'"'+(type===t[0]?' checked':'')+'><span>'+t[1]+'</span></label>').join('')+'</fieldset>';
   const first=liveAccs()[0];
-  const sel=m?m.account:((pa&&accById(pa)&&!accById(pa).archived)?pa:(first&&first.id));
-  const ownSel=m?(m.owner||'yo'):S.lastOwner;
-  const own=isY?'':'<label for="m-own">De quién es la plata</label><select id="m-own">'+S.owners.map(o=>opt(o.id,o.name,o.id===ownSel)).join('')+'</select>';
+  const sel=m?m.account:(pay.from||((pa&&accById(pa)&&!accById(pa).archived)?pa:(first&&first.id)));
+  const ownSel=m?(m.owner||'yo'):(pay.owner||S.lastOwner);
+  const toOwnSel=m?(m.toOwner||ownSel):(pay.toOwner||ownSel);
+  const toSel=m?(m.to||''):(pay.to||'');
+  const amtVal=m?centsToInput(m.cents):(pay.cents>0?centsToInput(pay.cents):'');
+  const own=isY?'':'<label for="m-own" id="m-own-l">Con plata de quién</label><select id="m-own">'+ownOpts(ownSel)+'</select>';
+  const trBlock=isY?'':'<div id="tr-wrap" hidden><label for="m-toown">Pasa a ser plata de</label><select id="m-toown">'+ownOpts(toOwnSel)+'</select></div>';
   return '<form id="mform" class="sheet" novalidate><h2>'+(m?(isY?'Editar rendimiento':'Editar movimiento'):'Nuevo movimiento')+'</h2>'+seg
     +'<label for="m-acc" id="m-acc-l">Cuenta</label><select id="m-acc">'+accOptions(sel,m?[m.account]:[])+'</select>'
-    +'<div id="to-wrap" hidden><label for="m-to">Hacia</label><select id="m-to">'+accOptions(m&&m.to?m.to:'',m&&m.to?[m.to]:[])+'</select></div>'
-    +own
-    +'<label for="m-amt" id="m-amt-l">'+(isY?'Rendimiento (puede ser negativo)':'Monto')+'</label><input id="m-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(m?centsToInput(m.cents):'')+'" data-focus>'
+    +'<div id="to-wrap" hidden><label for="m-to">Hacia</label><select id="m-to">'+accOptions(toSel,m&&m.to?[m.to]:[])+'</select></div>'
+    +own+trBlock
+    +'<label for="m-amt" id="m-amt-l">'+(isY?'Rendimiento (puede ser negativo)':'Monto')+'</label><input id="m-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+amtVal+'" data-focus>'
     +'<div id="amt2-wrap" hidden><label for="m-amt2" id="m-amt2-l">Monto que llega</label><input id="m-amt2" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(m&&m.toCents!=null?centsToInput(m.toCents):'')+'"><p class="hint" id="m-rate"></p></div>'
     +'<label for="m-date">Fecha</label><input id="m-date" type="date" value="'+esc(m?m.date:todayStr())+'">'
     +'<label for="m-note">Detalle (opcional)</label><input id="m-note" maxlength="120" autocomplete="off" value="'+esc(m?m.note:'')+'">'
+    +'<p class="hint" id="m-hint"></p>'
     +'<p class="err" id="m-err" role="alert"></p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary">Guardar</button></div></form>';
 }
 function toggleTo(){
-  const r=$('input[name=mtype]:checked'); const tr=r&&r.value==='transfer';
+  const r=$('input[name=mtype]:checked'); const t=r?r.value:''; const tr=t==='transfer';
   const w=$('#to-wrap'); if(!w) return; w.hidden=!tr;
   const l=$('#m-acc-l'); if(l) l.textContent=tr?'Desde':'Cuenta';
+  const tw=$('#tr-wrap'); if(tw) tw.hidden=!tr;
+  const fw=$('#for-wrap'); if(fw) fw.hidden=t!=='out';
+  const ol=$('#m-own-l'); if(ol) ol.textContent=tr?'De quién es la plata que sale':t==='in'?'De quién es la plata que entra':'Con plata de quién';
   refreshMovForm();
 }
 function refreshMovForm(){
   const accEl=$('#m-acc'); if(!accEl||!$('#amt2-wrap')) return;
-  const r=$('input[name=mtype]:checked'), tr=!!r&&r.value==='transfer';
+  const r=$('input[name=mtype]:checked'), type=r?r.value:'', tr=type==='transfer';
   const cf1=curOf(accEl.value), toEl=$('#m-to'), ct=toEl&&toEl.value?curOf(toEl.value):cf1, cross=tr&&cf1!==ct;
   const isY=S.modal&&S.modal.m&&S.modal.m.type==='yield';
   $('#m-amt-l').textContent=(isY?'Rendimiento (puede ser negativo)':(cross?'Monto que sale':'Monto'))+(cf1==='USD'?' (US$)':' ($)');
   $('#amt2-wrap').hidden=!cross;
   if(cross){ $('#m-amt2-l').textContent='Monto que llega'+(ct==='USD'?' (US$)':' ($)'); updRate(); }
+  const hint=$('#m-hint'); if(!hint) return;
+  const own=$('#m-own'), ov=own?own.value:'yo', amtC=parseAmt($('#m-amt').value);
+  let ht='';
+  if(tr){
+    const tw=$('#m-toown'), tv=tw?tw.value:ov;
+    ht=tv!==ov?'La plata pasa a ser de '+ownerName(tv)+'. Si '+ownerName(ov)+' no tenía esa plata, queda debiéndosela a '+ownerName(tv)+'.':'Movimiento interno: la plata sigue siendo de '+ownerName(ov)+' y no cuenta como ingreso ni gasto.';
+  }
+  hint.textContent=ht;
 }
 function updRate(){
   const el=$('#m-rate'); if(!el) return;
@@ -1468,7 +1600,9 @@ function accModal(a,preGroup,preCur){
     +'<label for="a-cur">Moneda</label><select id="a-cur"'+((a&&S.movs.some(m=>m.account===a.id||m.to===a.id))?' disabled':'')+'><option value="ARS"'+(((a&&a.cur!=='USD')||(!a&&preCur!=='USD'))?' selected':'')+'>Pesos</option><option value="USD"'+(((a&&a.cur==='USD')||(!a&&preCur==='USD'))?' selected':'')+'>Dólares (US$)</option></select>'
     +((a&&S.movs.some(m=>m.account===a.id||m.to===a.id))?'<p class="hint">La moneda no se puede cambiar porque la cuenta ya tiene movimientos.</p>':'')
     +'<label class="check"><input type="checkbox" id="a-yields"'+(a&&a.yields?' checked':'')+'>Genera rendimientos diarios</label>'
-    +'<label for="a-initial">Saldo inicial</label><input id="a-initial" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(a&&a.initial?centsToInput(a.initial):'')+'"><p class="hint">Lo que había en la cuenta antes del primer movimiento que cargues. Se cuenta como plata tuya, en la moneda de la cuenta.</p>'
+    +'<label class="check"><input type="checkbox" id="a-card"'+(a&&a.kind==='card'?' checked':'')+'>Es una tarjeta de crédito (el saldo es lo que debés)</label>'
+    +'<label>Saldo inicial de cada dueño</label>'+S.owners.map(o=>'<label class="fo-row" for="ini-'+esc(o.id)+'"><span>'+esc(o.name)+'</span><input id="ini-'+esc(o.id)+'" data-ini="'+esc(o.id)+'" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(a&&initOf(a)[o.id]?centsToInput(initOf(a)[o.id]):'')+'"></label>').join('')
+    +'<p class="hint">Lo que había en la cuenta antes del primer movimiento, repartido por dueño (en Efectivo, lo de cada uno). En una tarjeta, escribí la deuda con signo menos.</p>'
     +(a?'<label class="check"><input type="checkbox" id="a-arch"'+(a.archived?' checked':'')+'>Archivada (se oculta y no suma al total)</label>':'')
     +'<p class="err" id="a-err" role="alert"></p><div class="sheet-actions">'+(a&&canDelAcc(a)?'<button type="button" class="btn danger" data-act="acc-del">Eliminar</button>':'')+'<button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary">Guardar</button></div></form>';
 }
@@ -1505,7 +1639,8 @@ const catModal=(c,draft)=>{
   }
   return h;
 };
-const ownerModal=o=>simpleNameModal('wform',o?'Editar dueño':'Nuevo dueño','Nombre (por ejemplo, un grupo o una persona)',o?o.name:'',(o&&o.id!=='yo'&&!S.loans.some(l=>l.owner===o.id)&&!S.movs.some(m=>m.owner===o.id||m.repay===o.id||m.repayTo===o.id||(m.split&&m.split[o.id]!=null)))?'<button type="button" class="btn danger" data-act="owner-del">Eliminar</button>':'','');
+const ownerUsed=id=>S.movs.some(m=>m.owner===id||m.toOwner===id||(m.for&&m.for[id]!=null)||(m.split&&m.split[id]!=null))||S.loans.some(l=>l.owner===id)||S.movs.some(m=>m.repay===id||m.repayTo===id)||S.ops.some(o=>o.owner===id)||S.hlds.some(h=>h.iowner===id&&h.initial)||S.accounts.some(a=>a.initialOwners&&a.initialOwners[id]);
+const ownerModal=o=>simpleNameModal('wform',o?'Editar dueño':'Nuevo dueño','Nombre (por ejemplo, un grupo o una persona)',o?o.name:'',(o&&o.id!=='yo'&&!ownerUsed(o.id))?'<button type="button" class="btn danger" data-act="owner-del">Eliminar</button>':'','');
 
 function stmtStep1(){
   const M=S.modal;
@@ -1555,28 +1690,62 @@ function updateReviewSum(){
 }
 function wrapModal(body){ return '<div class="overlay" data-overlay>'+body+'</div>'; }
 function holdModal(x){
-  return '<form id="hform" class="sheet" novalidate><h2>'+(x?'Editar tenencia':'Nueva tenencia')+'</h2><label for="n-name">Nombre o ticker</label><input id="n-name" maxlength="20" autocomplete="off" autocapitalize="characters" placeholder="Por ejemplo, YMCXO" value="'+esc(x?x.name:'')+'" data-focus>'
-    +'<label for="h-init">Nominales que tenés hoy</label><input id="h-init" inputmode="decimal" autocomplete="off" placeholder="0" value="'+(x&&x.initial?esc(String(x.initial).replace('.',',')):'')+'"><p class="hint">'+(x?'Es la cantidad de partida, antes de las compras y ventas que cargaste.':'Si ya tenés nominales, escribí cuántos. Después anotá solo las compras y ventas nuevas.')+'</p>'
+  const k=x?x.kind:'fci', cu=x?holdCur(x):'ARS';
+  return '<form id="hform" class="sheet" novalidate><h2>'+(x?'Editar tenencia':'Nueva tenencia')+'</h2><label for="n-name">Nombre o ticker</label><input id="n-name" maxlength="40" autocomplete="off" placeholder="Por ejemplo, Balanz Capital Money Market" value="'+esc(x?x.name:'')+'" data-focus>'
+    +'<label for="h-kind">Qué es</label><select id="h-kind">'+opt('fci','Fondo común: cuotapartes',k==='fci')+opt('nom','Bono u obligación: nominales',k!=='fci')+'</select>'
+    +'<label for="h-cur">Moneda</label><select id="h-cur">'+opt('ARS','Pesos',cu==='ARS')+opt('USD','Dólares (US$)',cu==='USD')+'</select>'
+    +'<label for="h-init">Cantidad que tenés hoy</label><input id="h-init" inputmode="decimal" autocomplete="off" placeholder="0" value="'+(x&&x.initial?esc(String(x.initial).replace('.',',')):'')+'"><p class="hint">'+(x?'Es la cantidad de partida, antes de las compras y ventas que cargaste.':'Si ya tenés cuotapartes, escribí cuántas (con decimales si hace falta). Después anotá solo las compras y ventas nuevas.')+'</p>'
+    +'<label for="h-iown">De quién es esa cantidad</label><select id="h-iown">'+ownOpts(x?(x.iowner||'yo'):S.lastOwner)+'</select>'
+    +'<label for="h-ipx">Valor de compra por cuotaparte (opcional)</label><input id="h-ipx" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(x&&x.initialPx?esc(String(x.initialPx).replace('.',',')):'')+'"><p class="hint">Sirve para calcular la ganancia. Si no lo sabés, dejalo vacío.</p>'
     +'<p class="err" id="n-err" role="alert"></p><div class="sheet-actions">'+(x&&canDelHold(x)?'<button type="button" class="btn danger" data-act="hold-del">Eliminar</button>':'')+'<button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary">Guardar</button></div></form>';
 }
 function opModal(o,pt,ph){
-  if(!S.hlds.length) return '<div class="sheet"><h2>Compra o venta</h2><p class="hint">Primero agregá una tenencia, por ejemplo YMCXO.</p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cerrar</button><button type="button" class="btn primary" data-act="hold-new">Nueva tenencia</button></div></div>';
+  if(!S.hlds.length) return '<div class="sheet"><h2>Compra o venta</h2><p class="hint">Primero agregá una tenencia, por ejemplo un fondo de Balanz.</p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cerrar</button><button type="button" class="btn primary" data-act="hold-new">Nueva tenencia</button></div></div>';
   const type=o?o.type:(pt||'buy'), sel=o?o.hold:((ph&&holdById(ph))?ph:S.hlds[0].id);
+  const linked=o?S.movs.find(m=>m.opId===o.id):null;
   return '<form id="oform" class="sheet" novalidate><h2>'+(o?'Editar operación':'Compra o venta')+'</h2><fieldset class="seg"><legend class="muted" style="position:absolute;left:-9999px">Tipo</legend>'
     +[['buy','Compra'],['sell','Venta']].map(t=>'<label><input type="radio" name="otype" value="'+t[0]+'"'+(type===t[0]?' checked':'')+'><span>'+t[1]+'</span></label>').join('')+'</fieldset>'
     +'<label for="o-hold">Tenencia</label><select id="o-hold">'+S.hlds.map(x=>opt(x.id,x.name,x.id===sel)).join('')+'</select>'
-    +'<label for="o-qty">Cantidad de nominales</label><input id="o-qty" inputmode="decimal" autocomplete="off" placeholder="0" value="'+(o?esc(String(o.qty).replace('.',',')):'')+'" data-focus>'
+    +'<label for="o-own">De quién es</label><select id="o-own">'+ownOpts(o?(o.owner||'yo'):S.lastOwner)+'</select>'
+    +'<label for="o-qty">Cantidad (cuotapartes o nominales)</label><input id="o-qty" inputmode="decimal" autocomplete="off" placeholder="0" value="'+(o?esc(String(o.qty).replace('.',',')):'')+'" data-focus>'
+    +'<label for="o-px">Valor por cuotaparte (opcional)</label><input id="o-px" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(o&&o.price?esc(String(o.price).replace('.',',')):'')+'"><p class="hint" id="o-tot"></p>'
+    +'<label for="o-acc">Cuenta de donde sale o a donde entra la plata</label><select id="o-acc">'+opt('','No tocar ninguna cuenta',!linked)+liveAccs().filter(a=>a.kind!=='card').map(a=>opt(a.id,accLabel(a),!!linked&&linked.account===a.id)).join('')+'</select>'
     +'<label for="o-date">Fecha</label><input id="o-date" type="date" value="'+esc(o?o.date:todayStr())+'">'
     +'<label for="o-note">Detalle (opcional)</label><input id="o-note" maxlength="120" autocomplete="off" value="'+esc(o?o.note||'':'')+'">'
-    +'<p class="hint">Acá se anota solo la cantidad. Para mover plata entre tus cuentas, cargá una transferencia.</p>'
+    +'<p class="hint">Si elegís una cuenta, se anota la salida o entrada de plata en esa cuenta (como plata del dueño elegido) y no cuenta como gasto ni ingreso.</p>'
     +'<p class="err" id="o-err" role="alert"></p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary">Guardar</button></div></form>';
 }
+function updOpTotal(){
+  const el=$('#o-tot'); if(!el) return;
+  const q=parseNum($('#o-qty').value), p=parseNum($('#o-px').value), x=holdById($('#o-hold').value);
+  el.textContent=(q>0&&p>0&&x)?'Total: '+money(Math.round(q*p*100),holdCur(x)):'';
+}
+function pxModal(ph){
+  const fs=S.hlds.filter(x=>x.kind==='fci');
+  if(!fs.length) return '<div class="sheet"><h2>Actualizar valores</h2><p class="hint">Todavía no tenés fondos con cuotapartes. Agregá una tenencia de tipo «Fondo común».</p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cerrar</button><button type="button" class="btn primary" data-act="hold-new">Nueva tenencia</button></div></div>';
+  return '<form id="vform" class="sheet" novalidate><h2>Actualizar valores</h2><p class="hint">Escribí el valor de la cuotaparte que figura en Balanz. Dejá vacío lo que no querés tocar.</p>'
+    +'<label for="v-date">Fecha</label><input id="v-date" type="date" value="'+todayStr()+'">'
+    +'<div class="urows">'+fs.map(x=>{ const p=lastPx(x); return '<div class="urow"><div class="urow-head"><span class="urow-name">'+esc(x.name)+'</span><small>'+(p?'Último '+esc(pxFmt(p.v,holdCur(x)))+' · '+fmtDate(p.date,true):'Sin valor cargado')+'</small></div><input data-px="'+esc(x.id)+'" inputmode="decimal" autocomplete="off" placeholder="Valor de la cuotaparte" aria-label="Valor de la cuotaparte de '+esc(x.name)+'"'+(x.id===ph?' data-focus':'')+'></div>'; }).join('')+'</div>'
+    +'<p class="err" id="v-err" role="alert"></p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary">Guardar</button></div></form>';
+}
+function savePx(){
+  const err=$('#v-err'); err.textContent='';
+  const date=$('#v-date').value; if(!date){ err.textContent='Elegí una fecha.'; return; }
+  const rows=$$('[data-px]').filter(i=>i.value.trim());
+  if(!rows.length){ err.textContent='Escribí el valor de al menos un fondo.'; return; }
+  for(const i of rows){ const v=parseNum(i.value); if(!(v>0)){ err.textContent='Hay un valor que no se entiende.'; return; } }
+  rows.forEach(i=>{
+    const x=holdById(i.dataset.px), v=parseNum(i.value);
+    x.px=(x.px||[]).filter(p=>p.date!==date).concat([{date:date,v:v}]).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  });
+  persist(); closeModal(); render(); toast('Valores guardados');
+}
 function cobroModal(ph){
-  if(!S.hlds.length) return '<div class="sheet"><h2>Registrar cobro</h2><p class="hint">Primero agregá una tenencia, por ejemplo YMCXO.</p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cerrar</button><button type="button" class="btn primary" data-act="hold-new">Nueva tenencia</button></div></div>';
+  if(!S.hlds.length) return '<div class="sheet"><h2>Registrar cobro</h2><p class="hint">Primero agregá una tenencia.</p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cerrar</button><button type="button" class="btn primary" data-act="hold-new">Nueva tenencia</button></div></div>';
   const usd=liveAccs().filter(a=>a.cur==='USD');
   if(!usd.length) return '<div class="sheet"><h2>Registrar cobro</h2><p class="hint">Para registrar un cobro necesitás una cuenta en dólares. Creala en Ajustes, con «Agregar cuenta en dólares».</p><div class="sheet-actions"><button type="button" class="btn primary" data-act="close">Entendido</button></div></div>';
   const sel=(ph&&holdById(ph))?ph:S.hlds[0].id;
-  return '<form id="bform" class="sheet" novalidate><h2>Registrar cobro</h2><p class="hint">Renta o amortización en dólares. Se suma como rendimiento en la cuenta que elijas.</p>'
+  return '<form id="bform" class="sheet" novalidate><h2>Registrar cobro</h2><p class="hint">Renta, amortización o dividendo en dólares. Se suma como rendimiento en la cuenta que elijas y se reparte entre los dueños según lo que tenga cada uno.</p>'
     +'<label for="b-hold">Tenencia</label><select id="b-hold">'+S.hlds.map(x=>opt(x.id,x.name,x.id===sel)).join('')+'</select>'
     +'<label for="b-amt">Monto cobrado (US$)</label><input id="b-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" data-focus>'
     +'<label for="b-acc">Se acredita en</label><select id="b-acc">'+usd.map(a=>opt(a.id,accLabel(a),false)).join('')+'</select>'
@@ -1586,27 +1755,40 @@ function cobroModal(ph){
 }
 function saveHold(){
   const v=readName('#n-err'); if(!v) return;
-  const x=S.modal.h, raw=$('#h-init').value.trim(), q=raw?parseAmt(raw)/100:0;
+  const x=S.modal.h, raw=$('#h-init').value.trim(), q=raw?parseNum(raw):0, rp=$('#h-ipx').value.trim(), ipx=rp?parseNum(rp):0;
   if(isNaN(q)||q<0){ $('#n-err').textContent='La cantidad no se entiende.'; return; }
+  if(isNaN(ipx)||ipx<0){ $('#n-err').textContent='El valor de compra no se entiende.'; return; }
   if(S.hlds.some(y=>y.name.toLowerCase()===v.toLowerCase()&&(!x||y.id!==x.id))){ $('#n-err').textContent='Ya tenés una tenencia con ese nombre.'; return; }
-  if(x) S.hlds=S.hlds.map(y=>y.id===x.id?Object.assign({},y,{name:v,initial:q}):y);
-  else S.hlds.push({id:slug(v)+'-'+Math.random().toString(36).slice(2,6),name:v,initial:q});
+  const f={name:v,kind:$('#h-kind').value==='nom'?'nom':'fci',cur:$('#h-cur').value==='USD'?'USD':'ARS',initial:q,iowner:$('#h-iown').value||'yo',initialPx:ipx};
+  if(x) S.hlds=S.hlds.map(y=>y.id===x.id?Object.assign({},y,f):y);
+  else S.hlds.push(Object.assign({id:slug(v)+'-'+Math.random().toString(36).slice(2,6),px:[]},f));
   persist(); closeModal(); render(); toast('Tenencia guardada');
 }
 function saveOp(){
   const o=S.modal.o, err=$('#o-err'); err.textContent='';
-  const r=$('input[name=otype]:checked'), type=r?r.value:'buy', hold=$('#o-hold').value, q=parseAmt($('#o-qty').value)/100, date=$('#o-date').value, note=$('#o-note').value.trim();
-  if(!hold){ err.textContent='Elegí la tenencia.'; return; }
+  const r=$('input[name=otype]:checked'), type=r?r.value:'buy', hold=$('#o-hold').value, q=parseNum($('#o-qty').value), date=$('#o-date').value, note=$('#o-note').value.trim();
+  const owner=$('#o-own').value||'yo', rp=$('#o-px').value.trim(), price=rp?parseNum(rp):0, acc=$('#o-acc').value, x=holdById(hold);
+  if(!x){ err.textContent='Elegí la tenencia.'; return; }
   if(isNaN(q)||q<=0){ err.textContent='Ingresá una cantidad mayor a cero.'; return; }
+  if(isNaN(price)||price<0){ err.textContent='El valor por cuotaparte no se entiende.'; return; }
   if(!date){ err.textContent='Elegí una fecha.'; return; }
-  if(type==='sell'&&!S.modal.negOK){
-    const x=holdById(hold), have=r2(holdQty(x)-(o&&o.hold===hold?(o.type==='buy'?o.qty:-o.qty):0));
-    if(q>have){ S.modal.negOK=true; err.textContent='Estás vendiendo más de lo que tenés ('+qtyFmt(have)+'). Tocá Guardar otra vez para confirmar.'; return; }
+  if(acc){
+    if(!(price>0)){ err.textContent='Para mover plata de una cuenta, cargá el valor por cuotaparte.'; return; }
+    if(curOf(acc)!==holdCur(x)){ err.textContent='La cuenta tiene que estar en '+(holdCur(x)==='USD'?'dólares':'pesos')+', igual que la tenencia.'; return; }
   }
-  const data={type:type,hold:hold,qty:q,date:date,note:note,createdAt:o?(o.createdAt||Date.now()):Date.now()};
-  if(o) S.ops=S.ops.map(y=>y.id===o.id?Object.assign({id:o.id},data):y); else S.ops.push(Object.assign({id:newId()},data));
+  if(type==='sell'&&!S.modal.negOK){
+    const have=r2(holdQtyOwner(x,owner)-(o&&o.hold===hold&&(o.owner||'yo')===owner?(o.type==='buy'?o.qty:-o.qty):0));
+    if(q>have){ S.modal.negOK=true; err.textContent='Estás vendiendo más de lo que tiene '+ownerName(owner)+' ('+qtyFmt(have)+'). Tocá Guardar otra vez para confirmar.'; return; }
+  }
+  const id=o?o.id:newId();
+  const data={type:type,hold:hold,qty:q,date:date,note:note,owner:owner,createdAt:o?(o.createdAt||Date.now()):Date.now()};
+  if(price>0) data.price=price;
+  if(o) S.ops=S.ops.map(y=>y.id===o.id?Object.assign({id:o.id},data):y); else S.ops.push(Object.assign({id:id},data));
   S.ops.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:((a.createdAt||0)-(b.createdAt||0)));
-  S.selOp=''; persist(); closeModal(); render(); toast('Operación guardada');
+  S.movs=S.movs.filter(m=>m.opId!==id);
+  if(acc) S.movs.push({id:newId(),type:type==='buy'?'out':'in',account:acc,cents:Math.round(q*price*100),date:date,note:(type==='buy'?'Compra de ':'Venta de ')+x.name+' ('+qtyFmt(q)+')',owner:owner,internal:true,opId:id,createdAt:Date.now()});
+  S.lastOwner=owner; S.selOp='';
+  persist(); closeModal(); onData(); toast('Operación guardada');
 }
 function saveCobro(){
   const err=$('#b-err'); err.textContent='';
@@ -1615,17 +1797,22 @@ function saveCobro(){
   if(isNaN(cents)||cents<=0){ err.textContent='Ingresá un monto mayor a cero.'; return; }
   if(!acc){ err.textContent='Elegí la cuenta en dólares.'; return; }
   if(!date){ err.textContent='Elegí una fecha.'; return; }
-  putMov(null,{type:'yield',account:acc,cents:cents,date:date,note:'Cobro · '+x.name+(note?' · '+note:''),hold:hold,createdAt:Date.now()});
+  const data={type:'yield',account:acc,cents:cents,date:date,note:'Cobro · '+x.name+(note?' · '+note:''),hold:hold,createdAt:Date.now()};
+  const w={}; S.owners.forEach(o=>{ const q=holdQtyOwner(x,o.id); if(q>0) w[o.id]=q; });
+  const sp=allocate(cents,w);
+  if(Object.keys(sp).length>1||!('yo' in sp)) data.split=sp;
+  putMov(null,data);
   closeModal(); toast('Cobro guardado: '+signed(cents,'USD'));
 }
 function menuModal(){
-  const it=[['o','−','Egreso','Algo que pagaste','mov-new','out'],['i','+','Ingreso','Plata que entró','mov-new','in'],['t','⇄','Transferencia','Entre tus cuentas','mov-new','transfer'],['u','↻','Actualizar saldos','Para los rendimientos','upd',''],['t','◆','Nominales y cobros','Compras, ventas y cobros en dólares','goto-inv',''],['o','↗','Gasto para otro','Pagado con tu tarjeta para Catequesis u otro','lend-new','']];
+  const it=[['o','−','Egreso','Algo que pagaste','mov-new','out'],['i','+','Ingreso','Plata que entró','mov-new','in'],['t','⇄','Transferencia','Entre tus cuentas','mov-new','transfer'],['u','↻','Actualizar saldos','Para los rendimientos','upd',''],['t','◆','Inversiones','Cuotapartes, compras, ventas y cobros','goto-inv',''],['o','↗','Gasto para otro','Pagado con tu tarjeta para Catequesis u otro','lend-new','']];
   return '<div class="sheet"><div class="grab"></div><h2>¿Qué querés cargar?</h2>'+it.map(x=>'<button type="button" class="mact" data-act="'+x[4]+'"'+(x[5]?' data-type="'+x[5]+'"':'')+'><span class="mdot '+x[0]+'">'+x[1]+'</span><span><b>'+x[2]+'</b><span class="s">'+x[3]+'</span></span></button>').join('')
     +'<div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button></div></div>';
 }
 function modalBody(kind,data){
   switch(kind){
-    case 'mov': return movModal(data.m,data.type,data.acc);
+    case 'mov': return movModal(data.m,data.type,data.acc,data.pay);
+    case 'px': return pxModal(data.hold);
     case 'menu': return menuModal();
     case 'hold': return holdModal(data.h);
     case 'op': return opModal(data.o,data.type,data.hold);
@@ -1660,10 +1847,11 @@ function saveMov(){
   const account=$('#m-acc').value, to=type==='transfer'?$('#m-to').value:null;
   const cents=parseAmt($('#m-amt').value), date=$('#m-date').value, note=$('#m-note').value.trim();
   const ownEl=$('#m-own'), owner=ownEl?ownEl.value:'yo';
+  const toOwn=type==='transfer'?($('#m-toown').value||owner):owner;
   if(!account){err.textContent='Elegí una cuenta.';return;}
   if(isNaN(cents)||cents===0){err.textContent='Ingresá un monto distinto de cero.';return;}
   if(type!=='yield'&&cents<0){err.textContent='El monto va en positivo. Para una salida elegí Egreso.';return;}
-  if(type==='transfer'&&(!to||to===account)){err.textContent='Elegí dos cuentas distintas.';return;}
+  if(type==='transfer'&&(!to||(to===account&&toOwn===owner))){err.textContent=(to&&to===account)?'Para pasar plata dentro de la misma cuenta elegí dos dueños distintos.':'Elegí dos cuentas distintas.';return;}
   if(!date){err.textContent='Elegí una fecha.';return;}
   let toCents=null;
   if(type==='transfer'&&curOf(account)!==curOf(to)){
@@ -1672,14 +1860,18 @@ function saveMov(){
   }
   if((type==='out'||type==='transfer')&&!S.modal.negOK){
     const acc=accById(account), ob=acc?ownerBalances(acc):{};
-    const nb=(ob[owner]||0)-(m?effectOwner(m,account,owner):0)-cents;
-    if(nb<0){ S.modal.negOK=true; err.textContent='Esto deja la plata de '+ownerName(owner)+' en esa cuenta en '+money(nb,curOf(account))+'. Tocá Guardar otra vez para confirmar.'; return; }
+    if(acc&&acc.kind!=='card'){
+      const nb=(ob[owner]||0)-(m?effectOwner(m,account,owner):0)-cents;
+      if(nb<0){ S.modal.negOK=true; err.textContent='Esto deja la plata de '+ownerName(owner)+' en esa cuenta en '+money(nb,curOf(account))+'. Tocá Guardar otra vez para confirmar.'; return; }
+    }
   }
   const data={type:type,account:account,cents:cents,date:date,note:note,createdAt:m?m.createdAt:Date.now()};
   if(to) data.to=to;
   if(toCents!=null) data.toCents=toCents;
   if(type!=='yield') data.owner=owner;
+  if(type==='transfer'&&toOwn!==owner){ data.toOwner=toOwn; }
   if(m&&m.hold) data.hold=m.hold; keepRepay(m,data,type,owner,cents,date);
+  if(m&&m.internal){ data.internal=true; if(m.opId) data.opId=m.opId; }
   if(isY){
     if(m.base!=null) data.base=m.base; if(m.days!=null) data.days=m.days;
     if(m.split){ const w={}; for(const k in m.split) w[k]=Math.abs(m.split[k]); data.split=allocate(cents,w); }
@@ -1711,10 +1903,11 @@ function saveAcc(){
   const group=$('#a-group').value.trim(); let name=$('#a-name').value.trim();
   if(!name) name=group;
   if(!name){err.textContent='Poné el banco o el nombre de la cuenta.';return;}
-  const rawI=$('#a-initial').value.trim(); const initial=rawI?parseAmt(rawI):0;
-  if(isNaN(initial)){err.textContent='El saldo inicial no se entiende.';return;}
+  const ini={}; let initial=0, badI=false;
+  $$('[data-ini]').forEach(i=>{ const raw=i.value.trim(); if(!raw) return; const v=parseAmt(raw); if(isNaN(v)) badI=true; else if(v){ ini[i.dataset.ini]=v; initial+=v; } });
+  if(badI){err.textContent='Hay un saldo inicial que no se entiende.';return;}
   const maxOrder=S.accounts.reduce((m,x)=>Math.max(m,x.order||0),0);
-  const data={group:group||name,name:name,cur:$('#a-cur').value==='USD'?'USD':'ARS',yields:$('#a-yields').checked,initial:initial,order:a?(a.order||0):Math.floor(maxOrder)+1,archived:a?$('#a-arch').checked:false};
+  const data={group:group||name,name:name,cur:$('#a-cur').value==='USD'?'USD':'ARS',yields:$('#a-yields').checked,initial:initial,initialOwners:ini,kind:($('#a-card')&&$('#a-card').checked)?'card':'',order:a?(a.order||0):Math.floor(maxOrder)+1,archived:a?$('#a-arch').checked:false};
   const id=a?a.id:slug((group||'')+'-'+name)+'-'+Math.random().toString(36).slice(2,6);
   putAcc(id,data); closeModal(); toast('Cuenta guardada');
 }
@@ -1834,7 +2027,13 @@ document.addEventListener('click',e=>{
   if(act==='close') closeModal();
   else if(act==='hide'){ S.hide=!S.hide; try{localStorage.setItem('cuentas-hide',S.hide?'1':'0')}catch(_){} render(); }
   else if(act==='upd') openModal('upd',{accId:id});
-  else if(act==='mov-new') openModal('mov',{m:null,type:b.dataset.type||'',acc:b.dataset.acc||''});
+  else if(act==='mov-new'){
+    let pay=null;
+    if(b.dataset.card){ const ca=accById(b.dataset.card), o=S.lastOwner; pay={to:ca.id,cents:Math.max(0,-balance(ca)),from:bestAcc(o,'ARS'),owner:o}; }
+    openModal('mov',{m:null,type:b.dataset.type||'',acc:b.dataset.acc||'',pay:pay});
+  }
+  else if(act==='px-new') openModal('px',{hold:b.dataset.hold||S.hd||''});
+  else if(act==='iown'){ S.iOwner=id||''; render(); }
   else if(act==='fab') openModal('menu');
   else if(act==='goto-inv'){ closeModal(); if(navHash()==='#inversiones'){ S.hd=''; render(); } else navGo('inversiones'); }
   else if(act==='hold-open'){ S.hd=id; S.selOp=''; render(); window.scrollTo(0,0); }
@@ -1847,7 +2046,7 @@ document.addEventListener('click',e=>{
   else if(act==='op-sel'){ S.selOp=(S.selOp===id?'':id); S.confirmOp=''; render(); }
   else if(act==='op-del-ask'){ S.confirmOp=id; S.selOp=id; render(); }
   else if(act==='op-del-no'){ S.confirmOp=''; render(); }
-  else if(act==='op-del-yes'){ S.ops=S.ops.filter(y=>y.id!==id); S.confirmOp=''; S.selOp=''; persist(); render(); toast('Operación eliminada'); }
+  else if(act==='op-del-yes'){ S.ops=S.ops.filter(y=>y.id!==id); S.movs=S.movs.filter(m=>m.opId!==id); S.confirmOp=''; S.selOp=''; persist(); render(); toast('Operación eliminada'); }
   else if(act==='cobro-new') openModal('cobro',{hold:b.dataset.hold||S.hd||''});
   else if(act==='back'){ navGo('mas'); }
   else if(act==='acc-open'){ S.acc=id; S.selMov=''; S.limit=100; render(); window.scrollTo(0,0); }
@@ -1918,7 +2117,7 @@ document.addEventListener('submit',e=>{
   const f=e.target.id;
   if(f==='mform') saveMov(); else if(f==='uform') saveUpd(); else if(f==='aform') saveAcc();
   else if(f==='cform') saveCard(); else if(f==='kform') saveCat(); else if(f==='wform') saveOwner(); else if(f==='sform') stmtAnalyze(); else if(f==='pform') saveSMonth();
-  else if(f==='hform') saveHold(); else if(f==='oform') saveOp(); else if(f==='bform') saveCobro();
+  else if(f==='vform') savePx(); else if(f==='hform') saveHold(); else if(f==='oform') saveOp(); else if(f==='bform') saveCobro();
 });
 document.addEventListener('change',e=>{
   const t=e.target;
@@ -1926,7 +2125,8 @@ document.addEventListener('change',e=>{
   else if(t.dataset&&t.dataset.xcat){ setExpCat(t.dataset.xcat,t.value); }
   else if(t.dataset&&t.dataset.f){ reviewField(t); }
   else if(t.name==='mtype') toggleTo();
-  else if(t.id==='m-acc'||t.id==='m-to') refreshMovForm();
+  else if(t.id==='m-acc'||t.id==='m-to'||t.id==='m-own'||t.id==='m-toown') refreshMovForm();
+  else if(t.id==='o-hold') updOpTotal();
   else if(t.id==='u-date') updPreview();
   else if(t.id==='imp-file') readImport(t);
   else if(t.id==='s-file'){
@@ -1940,7 +2140,7 @@ document.addEventListener('input',e=>{
   if(t.id==='mq'){ S.fQ=t.value; S.limit=100; S.qf=true; render(); return; }
   if(t.closest&&t.closest('#uform')) updPreview();
   else if(t.dataset&&t.dataset.f) reviewField(t);
-  else if(t.closest&&t.closest('#mform,#oform')&&S.modal){ S.modal.negOK=false; if(t.id==='m-amt'||t.id==='m-amt2') updRate(); }
+  else if(t.closest&&t.closest('#mform,#oform')&&S.modal){ S.modal.negOK=false; if(t.id==='m-amt'||t.id==='m-amt2') updRate(); if(t.closest('#mform')) refreshMovForm(); if(t.closest('#oform')) updOpTotal(); }
 });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&S.modal) closeModal(); });
 const TABS=['resumen','movimientos','rendimientos','tarjetas','analisis','ajustes','mas','inversiones'];
