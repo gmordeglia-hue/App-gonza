@@ -5,7 +5,7 @@
 // Las entradas se agregan solo cuando tocás algo: Chrome en Android se saltea las que
 // una página agrega sin que el usuario haya tocado la pantalla, y eso cerraba la app.
 (function(){
-const SUBTABS=['rendimientos','inversiones','tarjetas','ajustes'];
+const SUBTABS=['rendimientos','inversiones','deudas','tarjetas','ajustes'];
 const TABS=['movimientos','analisis','mas'].concat(SUBTABS);
 let cur=location.hash.replace('#',''), have=0, skip=false, queued=false;
 history.replaceState({lvl:0},'',location.pathname+location.search);
