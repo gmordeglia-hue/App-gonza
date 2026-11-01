@@ -22,7 +22,7 @@ html.locked body>*:not(#lock){visibility:hidden!important}
 .debt+.debt{border-top:1px solid var(--line)}
 .debt .amt{white-space:nowrap;font-weight:600}
 </style>
-<script>window.APP_VERSION='v12'</script>
+<script>window.APP_VERSION='v13'</script>
 <style>
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body{margin:0}
@@ -196,6 +196,8 @@ section{min-width:0}
 .mrow+.mrow{border-top:1px solid var(--line)}
 .mrow svg.ico{width:24px;height:24px;stroke:var(--accent);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .mrow b{display:block;font-weight:600}
+.mgrp-h{margin:20px 4px 6px}
+.mgrp-h:first-child{margin-top:0}
 
 /* Navegación */
 .bnav{position:fixed;left:0;right:0;bottom:0;z-index:10;display:grid;grid-template-columns:1fr 1fr 78px 1fr 1fr;align-items:end;background:var(--surface);border-top:1px solid var(--line);
@@ -274,6 +276,7 @@ textarea{resize:vertical;line-height:1.4}
   .side a{display:flex;gap:12px;align-items:center;border-radius:var(--r-sm);padding:10px 12px;min-height:44px;font-weight:600;font-size:14.5px;color:var(--muted);text-decoration:none}
   .side a[aria-current="page"]{background:var(--soft);color:var(--accent)}
   .side .small{padding:8px 10px 0}
+  .side-h{font-size:11.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:12px 12px 2px}
   .bnav,.only-phone{display:none!important}
   .top{padding-top:0}
   .home{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:22px;align-items:start}
@@ -288,11 +291,15 @@ textarea{resize:vertical;line-height:1.4}
 <div class="app">
   <aside class="side" id="side" aria-label="Secciones">
     <div class="side-brand">Mis cuentas</div>
-    <button class="btn primary block" data-act="mov-new">+ Nuevo movimiento</button>
-    <button class="btn block" data-act="upd">Actualizar saldos</button>
+    <button class="btn primary block" data-act="fab">+ Cargar</button>
     <hr>
-    <a href="#resumen" data-tab="resumen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-6h4v6"/></svg>Inicio</a><a href="#movimientos" data-tab="movimientos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>Movimientos</a><a href="#analisis" data-tab="analisis"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Análisis</a><a href="#rendimientos" data-tab="rendimientos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Rendimientos</a><a href="#inversiones" data-tab="inversiones"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="5"/><path d="M13 13.5A5 5 0 1 0 19 19"/><path d="M9 7v4M7.5 9H11"/></svg>Inversiones</a><a href="#deudas" data-tab="deudas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg>Deudas</a>
-    <a href="#tarjetas" data-tab="tarjetas"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>Tarjetas</a><a href="#ajustes" data-tab="ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>Ajustes</a>
+    <a href="#resumen" data-tab="resumen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-6h4v6"/></svg>Inicio</a><a href="#movimientos" data-tab="movimientos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>Movimientos</a><a href="#analisis" data-tab="analisis"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Análisis</a>
+    <div class="side-h">La plata que crece</div>
+    <a href="#rendimientos" data-tab="rendimientos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Rendimientos</a><a href="#inversiones" data-tab="inversiones"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="5"/><path d="M13 13.5A5 5 0 1 0 19 19"/><path d="M9 7v4M7.5 9H11"/></svg>Inversiones</a>
+    <div class="side-h">Gastos y deudas</div>
+    <a href="#tarjetas" data-tab="tarjetas"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>Tarjetas</a><a href="#deudas" data-tab="deudas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg>Deudas entre dueños</a>
+    <div class="side-h">Configuración</div>
+    <a href="#ajustes" data-tab="ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>Ajustes</a>
     <div class="small muted">Solo en este dispositivo</div>
   </aside>
   <div class="col">
@@ -601,23 +608,35 @@ function lastBackup(){ try{ return localStorage.getItem(BK); }catch(_){ return n
 function backupNote(){
   if(!S.movs.length&&!S.exp.length) return '';
   const l=lastBackup(), d=l?daysBetween(l,todayStr()):null;
-  if(l&&d<7) return '';
-  return '<div class="note"><strong>Guardá una copia.</strong> '+(l?'Hace '+d+' días que no hacés una.':'Todavía no hiciste ninguna.')+' Está en Más, al final.</div>';
+  if(l&&d<AUTO_BK_DAYS) return '';
+  return '<div class="notice warn"><span>'+(l?'Hace '+d+' días que no se guarda una copia.':'Todavía no guardaste ninguna copia.')+'</span><button class="btn sm" data-act="export">Guardar ahora</button></div>';
+}
+/* Copia automática: si pasaron AUTO_BK_DAYS días desde la última, se descarga sola al primer toque en la app
+   (los navegadores solo dejan descargar archivos después de que uno toca la pantalla). */
+const AUTO_BK_DAYS=2;
+function autoBackupDue(){
+  if(!S.movs.length&&!S.exp.length&&!S.ops.length) return false;
+  const l=lastBackup(); return !l||daysBetween(l,todayStr())>=AUTO_BK_DAYS;
+}
+function armAutoBackup(){
+  const go=()=>{ document.removeEventListener('pointerdown',go,true); if(!S.error&&autoBackupDue()) exportBackup('Copia automática descargada'); };
+  document.addEventListener('pointerdown',go,true);
 }
 function backupBlock(){
   const l=lastBackup();
-  return '<section><h2 class="sec">Copia de seguridad</h2><p class="muted" style="margin:4px 0 8px">Tus datos viven solo en este celular. Si borrás los datos del navegador o cambiás de teléfono, se pierden. Guardá una copia de vez en cuando.</p>'
+  return '<section><h2 class="sec">Copia de seguridad</h2><p class="muted" style="margin:4px 0 8px">Tus datos viven solo en este celular. Si borrás los datos del navegador o cambiás de teléfono, se pierden.</p>'
+    +'<p class="muted" style="margin:0 0 8px"><strong style="color:var(--ink)">Copia automática:</strong> cada '+AUTO_BK_DAYS+' días, la primera vez que tocás la app se descarga sola una copia en la carpeta Descargas del celular. Podés borrar las viejas y quedarte con las últimas.</p>'
     +'<p style="margin:0 0 10px">'+(l?'Última copia: '+fmtDate(l):'Todavía no hiciste ninguna copia.')+'</p>'
     +'<div class="actions"><button class="btn" data-act="export">Guardar copia</button><button class="btn ghost" data-act="import">Restaurar copia</button></div>'
     +'<input type="file" id="imp-file" accept=".json,application/json" hidden></section>';
 }
-function exportBackup(){
+function exportBackup(msg){
   const data=JSON.stringify({v:5,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims});
   const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
   const a=document.createElement('a'); a.href=url; a.download='mis-cuentas-'+todayStr()+'.json';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
   try{ localStorage.setItem(BK,todayStr()); }catch(_){}
-  toast('Copia descargada'); render();
+  toast(typeof msg==='string'?msg:'Copia descargada'); render();
 }
 function readImport(inp){
   const f=inp.files&&inp.files[0]; if(!f) return;
@@ -896,7 +915,15 @@ function viewResumen(){
   const nonz=o=>nonzeroOwners(o);
   const owLine=(o,c)=>{const l=nonz(o); return (!fo&&(l.length>=2||(l.length===1&&l[0].id!=='yo')))?'<div class="total-sub owners">'+l.map(x=>'<span>'+esc(x.name)+' '+amt(money(x.v,c),x.v<0?'neg':'')+'</span>').join('')+'</div>':'';};
   const chips=S.owners.length>1?'<div class="chips" role="group" aria-label="De quién es la plata">'+S.owners.slice().sort((a,b)=>(b.id==='yo')-(a.id==='yo')).map(o=>'<button class="chip" data-act="rown" data-id="'+esc(o.id)+'" aria-pressed="'+(fo===o.id)+'">'+esc(o.name)+'</button>').join('')+'<button class="chip" data-act="rown" data-id="" aria-pressed="'+(!fo)+'">Todo</button></div>':'';
-  let L='<section class="total">'+chips+'<div class="eyebrow">Total en pesos</div><div class="big">'+amt(money(tot.ARS),tot.ARS<0?'neg':'')+'</div>';
+  // avisos primero: lo que hay que hacer hoy
+  let L='';
+  if(!S.movs.length&&accs.every(a=>!a.initial)) L+='<div class="note"><strong>Primer paso:</strong> cargá lo que tenés hoy en cada cuenta. Tocá una cuenta y entrá a <em>Editar cuenta</em> para completar el saldo inicial. Después anotá cada movimiento con el botón <strong>+</strong> y usá <em>Actualizar saldos</em> para los rendimientos.</div>';
+  else{
+    const pend=accs.filter(a=>needsUpd(a)&&(balance(a)!==0||lastYieldOf(a.id))).length;
+    if(pend) L+='<div class="notice info"><span>'+(pend===1?'1 cuenta que rinde no está actualizada hoy':pend+' cuentas que rinden no están actualizadas hoy')+'</span><button class="btn sm primary" data-act="upd">Actualizar</button></div>';
+  }
+  L+=stmtReminder()+backupNote();
+  L+='<section class="total">'+chips+'<div class="eyebrow">Total en pesos</div><div class="big">'+amt(money(tot.ARS),tot.ARS<0?'neg':'')+'</div>';
   if(hasY) L+='<div class="stats"><div class="stat"><span class="small muted">Rendimiento hoy</span><b>'+amt(signed(yT.ARS),cls(yT.ARS))+'</b></div><div class="stat"><span class="small muted">Rendimiento del mes</span><b>'+amt(signed(yM.ARS),cls(yM.ARS))+'</b></div></div>';
   const cardDebt=accs.filter(a=>a.kind==='card'&&!isU(a)).reduce((s,a)=>s+Math.min(0,val(a)),0);
   L+=owLine(ot.ARS,'ARS')+(cardDebt<0?'<div class="small muted" style="margin-top:8px">Incluye lo que se debe de tarjetas: '+amt(money(cardDebt),'neg')+'</div>':'')+'</section>';
@@ -912,16 +939,13 @@ function viewResumen(){
     const IT=invTotals(fo);
     if(IT.ARS||IT.USD) L+='<section class="usd-card"><div class="eyebrow">Cuotapartes (Balanz y otros fondos)</div><div class="usd-fig">'+amt(money(IT.ARS))+'</div>'+(IT.USD?'<div class="total-sub"><span>'+amt(money(IT.USD,'USD'))+'</span></div>':'')+'<div class="total-sub"><a class="link" href="#inversiones">Ver inversiones</a></div></section>';
   }
-  L+=stmtReminder();
-  if(!S.movs.length&&accs.every(a=>!a.initial)) L+='<div class="note"><strong>Primer paso:</strong> cargá lo que tenés hoy en cada cuenta. Tocá una cuenta y entrá a <em>Editar cuenta</em> para completar el saldo inicial. Después anotá cada movimiento con el botón <strong>+</strong> y usá <em>Actualizar saldos</em> para los rendimientos.</div>';
-  L+=backupNote();
   // cuentas por entidad
   const gm=new Map();
   accs.forEach(a=>{ if(fo&&val(a)===0) return; const g=a.group||a.name; if(!gm.has(g)) gm.set(g,[]); gm.get(g).push(a); });
   let R='';
   if(!gm.size&&fo) R+='<div class="note">No hay plata de '+esc(ownerName(fo))+' en tus cuentas.</div>';
   if(gm.size){
-    R+='<div class="blist">';
+    R+='<h2 class="sec" style="margin:0">Tus cuentas</h2><div class="blist">';
     gm.forEach((list,g)=>{
       const sums={ARS:0,USD:0}; list.forEach(a=>{sums[isU(a)?'USD':'ARS']+=val(a)});
       const amts=(sums.ARS||!sums.USD?'<span class="bam">'+amt(money(sums.ARS),sums.ARS<0?'neg':'')+(sums.USD?'<span class="alt">'+amt(money(sums.USD,'USD'))+'</span>':'')+'</span>':'<span class="bam">'+amt(money(sums.USD,'USD'),sums.USD<0?'neg':'')+'</span>');
@@ -972,9 +996,13 @@ function viewCuenta(){
   return h;
 }
 function viewMas(){
-  const rows=[['rendimientos','Rendimientos','Cuánto rinde cada cuenta','rend'],['deudas','Deudas entre dueños','Quién le debe a quién y devoluciones','debt'],['inversiones','Inversiones','Cuotapartes de Balanz, nominales y cobros','inv'],['tarjetas','Tarjetas','Resúmenes y gasto por categoría','card'],['ajustes','Ajustes','Cuentas, dueños, tarjetas y categorías','gear']];
+  const groups=[
+    ['La plata que crece',[['rendimientos','Rendimientos','Cuánto rinde cada cuenta','rend'],['inversiones','Inversiones','Cuotapartes de Balanz, nominales y cobros','inv']]],
+    ['Gastos y deudas',[['tarjetas','Tarjetas','Resúmenes y en qué se va la plata','card'],['deudas','Deudas entre dueños','Quién le debe a quién y devoluciones','debt']]],
+    ['Configuración',[['ajustes','Ajustes y seguridad','Cuentas, dueños, tarjetas, categorías, copias y bloqueo','gear']]]
+  ];
   const IC={debt:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg>',inv:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="5"/><path d="M13 13.5A5 5 0 1 0 19 19"/><path d="M9 7v4M7.5 9H11"/></svg>',rend:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',card:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>',gear:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>'};
-  return '<div class="mlist">'+rows.map(r=>'<a class="mrow" href="#'+r[0]+'">'+IC[r[3]]+'<span><b>'+r[1]+'</b><span class="small muted">'+r[2]+'</span></span>'+CHEV+'</a>').join('')+'</div>'+backupBlock()+(window.lockBlock?window.lockBlock():'');
+  return '<div>'+groups.map(g=>'<div class="eyebrow mgrp-h">'+g[0]+'</div><div class="mlist">'+g[1].map(r=>'<a class="mrow" href="#'+r[0]+'">'+IC[r[3]]+'<span><b>'+r[1]+'</b><span class="small muted">'+r[2]+'</span></span>'+CHEV+'</a>').join('')+'</div>').join('')+'</div>';
 }
 
 function typeLabel(t){return t==='in'?'Ingreso':t==='out'?'Egreso':t==='transfer'?'Transferencia':'Rendimiento'}
@@ -1101,7 +1129,8 @@ function viewAnalisis(){
   const fo=S.aOwner&&S.owners.some(o=>o.id===S.aOwner)?S.aOwner:'';
   const pm=(a,b)=>{ if(!(b>0)) return ''; const r=(a-b)/b; return '<span class="'+(r>0?'neg':r<0?'pos':'muted')+'">'+spct(r)+'</span>'; };
   let h='<div class="filters"><select data-filter="aRange" aria-label="Período">'+opt('6','Últimos 6 meses',N===6)+opt('12','Últimos 12 meses',N===12)+'</select></div>';
-  // ----- tarjetas por mes -----
+  // ----- tarjetas por mes (se arma acá y se muestra después de las cuentas) -----
+  const head=h; h='';
   h+='<section><h2 class="sec">Tarjetas: gasto por mes</h2>';
   if(!S.exp.length) h+='<div class="note">Cuando cargues resúmenes de tarjeta, acá vas a ver cuánto gastás cada mes y en qué.</div>';
   else{
@@ -1122,18 +1151,9 @@ function viewAnalisis(){
       if(cu.length){ const by2=new Map(); cu.forEach(e=>by2.set(e.cat,(by2.get(e.cat)||0)+e.cents)); h+='<p class="an-note">En dólares: '+Array.from(by2.entries()).sort((a,b)=>b[1]-a[1]).map(x=>esc(catName(x[0]))+' '+amt(money(x[1],'USD'))).join(' · ')+'</p>'; }
     }
   }
+  if(S.stmts.length) h+='<p class="an-note">Los resúmenes uno por uno, y para cambiarles el mes o borrarlos, están en <a class="link" href="#tarjetas">Tarjetas</a>.</p>';
   h+='</section>';
-  // ----- resúmenes por tarjeta -----
-  if(S.stmts.length){
-    h+='<section><h2 class="sec">Resúmenes de tarjeta</h2><div class="list-head">';
-    S.stmts.slice().sort((a,b)=>a.period<b.period?1:a.period>b.period?-1:0).forEach(s=>{
-      const l=S.exp.filter(e=>e.stmt===s.id), t=sumC(l.filter(e=>e.cur!=='USD')), u=sumC(l.filter(e=>e.cur==='USD'));
-      const ps=S.stmts.filter(x=>x.card===s.card&&x.period<s.period).sort((a,b)=>a.period<b.period?1:-1)[0];
-      const pt=ps?sumC(S.exp.filter(e=>e.stmt===ps.id&&e.cur!=='USD')):0;
-      h+='<div class="mov"><div><div class="mov-t">'+esc(cardName(s.card))+' · '+esc(monthLabel(s.period))+'</div><div class="mov-s">'+l.length+' consumos'+(pt>0?' · '+pm(t,pt)+' vs resumen anterior':'')+'</div></div><div class="mov-amt">'+amt(money(t))+(u?'<div>'+amt(money(u,'USD'),'muted')+'</div>':'')+'</div></div>';
-    });
-    h+='</div></section>';
-  }
+  const tj=h; h=head;
   // ----- movimiento de cuentas -----
   const idx={}; ms.forEach((p,i)=>{idx[p]=i});
   const R=ms.map(()=>({ARS:{i:0,o:0,y:0},USD:{i:0,o:0,y:0}}));
@@ -1155,13 +1175,13 @@ function viewAnalisis(){
     h+=(la?'<div class="list-head" style="margin-top:10px">'+la+'</div>':'')+(lu?'<h3 class="sec" style="font-size:16px;margin-top:18px">En dólares</h3><div class="list-head">'+lu+'</div>':'');
     h+='<p class="an-note">La cifra de cada mes es ingresos menos egresos más rendimientos. Las transferencias entre tus cuentas no cuentan. Con un dueño elegido, los egresos son los gastos que fueron para ese dueño, aunque los haya pagado otro. Pagar una tarjeta que cargaste como cuenta es una transferencia y no cuenta: el gasto se cuenta cuando lo cargás en la tarjeta. Las compras de cuotapartes tampoco cuentan como gasto.</p>';
   }
-  h+='</section>';
+  h+='</section>'+tj;
   return h;
 }
 function viewAjustes(){
   const all=S.accounts.slice().sort(byOrder), gm=new Map();
   all.forEach(a=>{const g=a.group||a.name; if(!gm.has(g)) gm.set(g,[]); gm.get(g).push(a);});
-  let h='<p class="muted" style="font-size:14px;margin:0 0 4px">Lo que se toca de vez en cuando: cuentas, dueños, tarjetas y categorías.</p><section><h2 class="sec">Cuentas</h2>';
+  let h='<p class="muted" style="font-size:14px;margin:0 0 4px">Lo que se toca de vez en cuando: cuentas, dueños, tarjetas, categorías y la copia de seguridad (al final).</p><section><h2 class="sec">Cuentas</h2>';
   gm.forEach((list,g)=>{
     h+='<div class="grp"><div class="grp-h"><span class="eyebrow">'+esc(g)+'</span></div>'
       +list.map(a=>'<div class="acc"><div><div class="acc-name">'+esc(a.name)+(a.cur==='USD'&&!/US\$|dólar/i.test(a.name)?' (US$)':'')+'</div>'+(a.archived?'<div class="acc-meta"><span>Archivada</span></div>':'')+'</div><div class="acc-actions"><button class="btn sm ghost" data-act="acc-edit" data-id="'+esc(a.id)+'">Editar</button></div></div>').join('')
@@ -1169,7 +1189,7 @@ function viewAjustes(){
   });
   h+='<div style="margin-top:10px"><button class="btn" data-act="acc-new">Nueva cuenta, banco o billetera</button></div></section>';
   h+='<section><h2 class="sec">Dueños de la plata</h2><div class="list-head">'+S.owners.map(o=>'<div class="acc"><div><div class="acc-name">'+esc(o.name)+'</div></div><div class="acc-actions"><button class="btn sm ghost" data-act="owner-edit" data-id="'+esc(o.id)+'">Editar</button></div></div>').join('')+'</div><div style="margin-top:10px"><button class="btn ghost" data-act="owner-new">Agregar dueño</button></div></section>';
-  h+=cardsCatsBlock();
+  h+=cardsCatsBlock()+backupBlock()+(window.lockBlock?window.lockBlock():'');
   return h;
 }
 function viewRend(){
@@ -1230,7 +1250,7 @@ function mgmtBlock(){
 }
 function viewTarj(){
   if(!S.cards.length) return '<div class="empty"><h2>Cargá tus tarjetas</h2><p>Agregá tus tarjetas de crédito y subí los resúmenes para ver en qué se va la plata.</p><button class="btn primary" data-act="card-new">Agregar tarjeta</button></div>';
-  let h='<div class="actions"><button class="btn primary" data-act="stmt-new">Cargar resumen</button></div>';
+  let h='<div class="actions"><button class="btn primary" data-act="stmt-new">Cargar resumen</button><a class="btn ghost" href="#ajustes" style="text-decoration:none;display:inline-flex;align-items:center">Editar tarjetas y categorías</a></div>';
   if(!S.exp.length) return h+'<div class="note">Todavía no cargaste ningún resumen. Tocá <strong>Cargar resumen</strong>, pegá el texto del PDF y revisá los consumos.</div>'+mgmtBlock();
   const periods=Array.from(new Set(S.exp.map(e=>e.period))).sort().reverse();
   if(S.xPeriod!=='all'&&periods.indexOf(S.xPeriod)<0) S.xPeriod=periods[0];
@@ -1793,7 +1813,7 @@ function saveCobro(){
   closeModal(); toast('Cobro guardado: '+signed(cents,'USD'));
 }
 function menuModal(){
-  const it=[['o','−','Egreso','Algo que pagaste','mov-new','out'],['i','+','Ingreso','Plata que entró','mov-new','in'],['t','⇄','Transferencia','Entre tus cuentas','mov-new','transfer'],['u','↻','Actualizar saldos','Para los rendimientos','upd',''],['t','◆','Inversiones','Cuotapartes, compras, ventas y cobros','goto-inv','']];
+  const it=[['o','−','Egreso','Algo que pagaste','mov-new','out'],['i','+','Ingreso','Plata que entró','mov-new','in'],['t','⇄','Transferencia','Entre tus cuentas','mov-new','transfer'],['u','↻','Actualizar saldos','Lo que rindieron las cuentas','upd',''],['t','▤','Resumen de tarjeta','Subir el PDF del mes','stmt-new',''],['t','◆','Inversiones','Ir a compras, ventas, valores y cobros','goto-inv','']];
   return '<div class="sheet"><div class="grab"></div><h2>¿Qué querés cargar?</h2>'+it.map(x=>'<button type="button" class="mact" data-act="'+x[4]+'"'+(x[5]?' data-type="'+x[5]+'"':'')+'><span class="mdot '+x[0]+'">'+x[1]+'</span><span><b>'+x[2]+'</b><span class="s">'+x[3]+'</span></span></button>').join('')
     +'<div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button></div></div>';
 }
@@ -2191,6 +2211,7 @@ function init(){
   if(!loadStore()) return;
   S.xPeriod='';
   onData();
+  armAutoBackup();
   try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(_){}
 }
 init();
