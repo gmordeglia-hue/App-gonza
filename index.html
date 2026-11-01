@@ -22,7 +22,7 @@ html.locked body>*:not(#lock){visibility:hidden!important}
 .debt+.debt{border-top:1px solid var(--line)}
 .debt .amt{white-space:nowrap;font-weight:600}
 </style>
-<script>window.APP_VERSION='v15'</script>
+<script>window.APP_VERSION='v16'</script>
 <style>
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body{margin:0}
@@ -967,8 +967,8 @@ function ownerPanel(a,ob){
   const l=nonzeroOwners(ob); if(!l.length) return '';
   const neg=l.filter(x=>x.v<0);
   let h='<section class="note"><strong>De quién es la plata de esta cuenta</strong>'+l.map(x=>'<div class="debt-h"><span>'+esc(x.name)+'</span>'+amt(money(x.v,a.cur),x.v<0?'neg':'')+'</div>').join('');
-  if(neg.length) h+='<p class="small muted" style="margin:6px 0 0">'+neg.map(x=>esc(x.name)).join(', ')+' figura en negativo: usó plata de otro dueño sin que quedara anotado. Tocá «Pasar plata entre dueños» para regularizarlo.</p>';
-  h+='<div class="actions" style="margin-top:8px"><button class="btn sm" data-act="mov-new" data-type="transfer" data-move="'+esc(a.id)+'">Pasar plata entre dueños</button></div></section>';
+  if(neg.length) h+='<p class="small muted" style="margin:6px 0 0">'+neg.map(x=>esc(x.name)).join(', ')+' figura en negativo en esta cuenta.</p>';
+  h+='</section>';
   return h;
 }
 function ownSub(a){
@@ -1013,7 +1013,7 @@ function ownerHas(m,oid){
 function movRow(m,run,noDate){
   const a=accById(m.account), b=m.to?accById(m.to):null;
   const xo=m.type==='transfer'&&m.toOwner&&m.toOwner!==(m.owner||'yo');
-  const main=m.note?m.note:(m.type==='transfer'?(b&&b.kind==='card'?'Pago de tarjeta':xo?({repay:'Devolución',loan:'Préstamo',gift:'Aporte'}[m.kind]||'Traspaso'):'Movimiento interno'):typeLabel(m.type));
+  const main=m.note?m.note:(m.type==='transfer'?(b&&b.kind==='card'?'Pago de tarjeta':xo?({repay:'Devolución',loan:'Préstamo',gift:'Aporte'}[m.kind]||'Traspaso'):'Movimiento entre cuentas'):typeLabel(m.type));
   const where=(m.type==='transfer'&&m.to!==m.account)?accLabel(a)+' → '+accLabel(b):accLabel(a);
   let amtHtml;
   if(m.type==='transfer'&&(!S.fAcc||(m.to===m.account&&!S.fOwner))){ const c1=curOf(m.account), c2=m.to?curOf(m.to):c1; amtHtml=amt((m.toCents!=null&&c1!==c2)?money(m.cents,c1)+' → '+money(m.toCents,c2):money(m.cents,c1),'muted'); }
@@ -1493,13 +1493,17 @@ function movModal(m,pt,pa,pay){
   const repSel=m?(m.repayFrom||''):(pay.repayFrom||'');
   const toSel=m?(m.to||''):(pay.to||'');
   const amtVal=m?centsToInput(m.cents):(pay.cents>0?centsToInput(pay.cents):'');
+  /* Una transferencia es entre cuentas (la plata sigue siendo del mismo dueño) o entre dueños (cambia de dueño). */
+  const modeSel=(m?(m.toOwner&&m.toOwner!==(m.owner||'yo')):(pay.mode==='own'||!!(pay.toOwner&&pay.toOwner!==ownSel)))?'own':'acc';
+  const modeSeg=isY?'':'<fieldset class="seg" id="mode-wrap" hidden><legend class="muted" style="position:absolute;left:-9999px">Qué se pasa</legend>'
+    +[['acc','Entre cuentas'],['own','Entre dueños']].map(t=>'<label><input type="radio" name="mmode" value="'+t[0]+'"'+(modeSel===t[0]?' checked':'')+'><span>'+t[1]+'</span></label>').join('')+'</fieldset>';
   const own=isY?'':'<label for="m-own" id="m-own-l">Con plata de quién</label><select id="m-own">'+ownOpts(ownSel)+'</select>';
   const trBlock=isY?'':'<div id="tr-wrap" hidden><label for="m-toown">Pasa a ser plata de</label><select id="m-toown">'+ownOpts(toOwnSel)+'</select>'
     +'<div id="kind-wrap" hidden><label for="m-kind">¿Qué significa?</label><select id="m-kind">'+opt('repay','Devolución de una deuda',kindSel==='repay')+opt('loan','Préstamo (me lo tiene que devolver)',kindSel==='loan')+opt('gift','Aporte, sin deuda',kindSel==='gift')+'</select></div></div>';
   const forBlock=isY?'':'<div id="for-wrap" hidden><label for="m-for">¿Para quién es el gasto?</label><select id="m-for">'+opt('','Para el mismo dueño de la plata',!forSel)+S.owners.map(o=>opt(o.id,o.name,forSel===o.id)).join('')+opt('__multi','Repartir entre varios…',forSel==='__multi')+'</select>'
     +'<div id="for-multi" hidden>'+S.owners.map(o=>'<label class="fo-row"><span>'+esc(o.name)+'</span><input data-fo="'+esc(o.id)+'" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(fm&&fm[o.id]?centsToInput(fm[o.id]):'')+'"></label>').join('')+'</div></div>';
   const repBlock=isY?'':'<div id="rep-wrap" hidden><label for="m-repay">¿Es una devolución de una deuda?</label><select id="m-repay">'+opt('','No, es plata que entra',!repSel)+S.owners.map(o=>opt(o.id,'Sí, me la devuelve '+o.name,repSel===o.id)).join('')+'</select></div>';
-  return '<form id="mform" class="sheet" novalidate><h2>'+(m?(isY?'Editar rendimiento':'Editar movimiento'):'Nuevo movimiento')+'</h2>'+seg
+  return '<form id="mform" class="sheet" novalidate><h2>'+(m?(isY?'Editar rendimiento':'Editar movimiento'):'Nuevo movimiento')+'</h2>'+seg+modeSeg
     +'<label for="m-acc" id="m-acc-l">Cuenta</label><select id="m-acc">'+accOptions(sel,m?[m.account]:[])+'</select>'
     +'<div id="to-wrap" hidden><label for="m-to">Hacia</label><select id="m-to">'+accOptions(toSel,m&&m.to?[m.to]:[])+'</select></div>'
     +own+trBlock+forBlock+repBlock
@@ -1510,14 +1514,20 @@ function movModal(m,pt,pa,pay){
     +'<p class="hint" id="m-hint"></p>'
     +'<p class="err" id="m-err" role="alert"></p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary">Guardar</button></div></form>';
 }
+const movMode=()=>{ const r=$('input[name=mmode]:checked'); return r?r.value:'acc'; };
 function toggleTo(){
-  const r=$('input[name=mtype]:checked'); const t=r?r.value:''; const tr=t==='transfer';
+  const r=$('input[name=mtype]:checked'); const t=r?r.value:''; const tr=t==='transfer', byOwn=tr&&movMode()==='own';
   const w=$('#to-wrap'); if(!w) return; w.hidden=!tr;
-  const l=$('#m-acc-l'); if(l) l.textContent=tr?'Desde':'Cuenta';
-  const tw=$('#tr-wrap'); if(tw) tw.hidden=!tr;
+  const mw=$('#mode-wrap'); if(mw) mw.hidden=!tr;
+  const l=$('#m-acc-l'); if(l) l.textContent=byOwn?'Sale de la cuenta':tr?'Desde':'Cuenta';
+  const tl=$('label[for=m-to]'); if(tl) tl.textContent=byOwn?'Entra en la cuenta (puede ser la misma)':'Hacia';
+  const tw=$('#tr-wrap'); if(tw) tw.hidden=!byOwn;
   const fw=$('#for-wrap'); if(fw) fw.hidden=t!=='out';
   const rw=$('#rep-wrap'); if(rw) rw.hidden=t!=='in';
-  const ol=$('#m-own-l'); if(ol) ol.textContent=tr?'De quién es la plata que sale':t==='in'?'De quién es la plata que entra':'Con plata de quién';
+  const ol=$('#m-own-l'); if(ol) ol.textContent=byOwn?'De quién es la plata que sale':tr?'De quién es la plata':t==='in'?'De quién es la plata que entra':'Con plata de quién';
+  // Entre dueños: si no se eligió otra cosa, la plata queda en la misma cuenta
+  const M=S.modal||{}, te=$('#m-to'), fe=$('#m-acc');
+  if(byOwn&&!M.m&&!(M.pay&&M.pay.to)&&te&&fe&&!M.toTouched) te.value=fe.value;
   refreshMovForm();
 }
 function refreshMovForm(){
@@ -1532,14 +1542,15 @@ function refreshMovForm(){
   const own=$('#m-own'), ov=own?own.value:'yo', amtC=parseAmt($('#m-amt').value);
   let ht='', due=0;
   if(tr){
-    const tw=$('#m-toown'), tv=tw?tw.value:ov, diff=tv!==ov, kw=$('#kind-wrap'); if(kw) kw.hidden=!diff;
-    if(diff){
+    const byOwn=movMode()==='own', tw=$('#m-toown'), tv=(byOwn&&tw)?tw.value:ov, diff=tv!==ov, kw=$('#kind-wrap'); if(kw) kw.hidden=!diff;
+    if(byOwn&&!diff) ht='Elegí a qué dueño pasa la plata.';
+    else if(diff){
       const kd=$('#m-kind'), M=S.modal||{};
       if(kd&&!M.kindTouched&&!(M.m&&M.m.kind)&&!(M.pay&&M.pay.kind)) kd.value=owes(ov,tv,cf1)>0?'repay':'loan';
       const k=kd?kd.value:'gift';
       if(k==='repay'&&!cross) due=owes(ov,tv,cf1);
       ht=k==='repay'?ownerName(ov)+' le devuelve a '+ownerName(tv)+' y baja lo que le debe, sin importar de qué cuenta venía la deuda.':k==='loan'?'La plata pasa a ser de '+ownerName(tv)+', que le queda debiendo a '+ownerName(ov)+'.':'La plata pasa a ser de '+ownerName(tv)+' y no queda ninguna deuda.';
-    }else ht='Movimiento interno: la plata sigue siendo de '+ownerName(ov)+' y no cuenta como ingreso ni gasto.';
+    }else ht='Entre tus cuentas: la plata sigue siendo de '+ownerName(ov)+' y no cuenta como ingreso ni gasto.';
   }else if(type==='in'){
     const rp=$('#m-repay'); if(rp&&rp.value) due=owes(rp.value,ov,cf1);
     if(rp&&rp.value) ht='Entra plata de '+ownerName(rp.value)+' que le devuelve a '+ownerName(ov)+': baja lo que le debe y no cuenta como ingreso.';
@@ -1812,8 +1823,8 @@ function saveCobro(){
   closeModal(); toast('Cobro guardado: '+signed(cents,'USD'));
 }
 function menuModal(){
-  const it=[['o','−','Egreso','Algo que pagaste','mov-new','out'],['i','+','Ingreso','Plata que entró','mov-new','in'],['t','⇄','Transferencia','Entre tus cuentas','mov-new','transfer'],['u','↻','Actualizar saldos','Lo que rindieron las cuentas','upd',''],['t','▤','Resumen de tarjeta','Subir el PDF del mes','stmt-new',''],['t','◆','Inversiones','Ir a compras, ventas, valores y cobros','goto-inv','']];
-  return '<div class="sheet"><div class="grab"></div><h2>¿Qué querés cargar?</h2>'+it.map(x=>'<button type="button" class="mact" data-act="'+x[4]+'"'+(x[5]?' data-type="'+x[5]+'"':'')+'><span class="mdot '+x[0]+'">'+x[1]+'</span><span><b>'+x[2]+'</b><span class="s">'+x[3]+'</span></span></button>').join('')
+  const it=[['o','−','Egreso','Algo que pagaste','mov-new','out'],['i','+','Ingreso','Plata que entró','mov-new','in'],['t','⇄','Movimiento entre cuentas','Pasar plata de una cuenta a otra','mov-new','transfer'],['t','⇆','Movimiento entre dueños','La plata pasa a ser de otro dueño (o devolver una deuda)','mov-new','transfer','own'],['u','↻','Actualizar saldos','Lo que rindieron las cuentas','upd',''],['t','▤','Resumen de tarjeta','Subir el PDF del mes','stmt-new',''],['t','◆','Inversiones','Ir a compras, ventas, valores y cobros','goto-inv','']];
+  return '<div class="sheet"><div class="grab"></div><h2>¿Qué querés cargar?</h2>'+it.map(x=>'<button type="button" class="mact" data-act="'+x[4]+'"'+(x[5]?' data-type="'+x[5]+'"':'')+(x[6]?' data-mode="'+x[6]+'"':'')+'><span class="mdot '+x[0]+'">'+x[1]+'</span><span><b>'+x[2]+'</b><span class="s">'+x[3]+'</span></span></button>').join('')
     +'<div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button></div></div>';
 }
 function modalBody(kind,data){
@@ -1855,8 +1866,10 @@ function saveMov(){
   const account=$('#m-acc').value, to=type==='transfer'?$('#m-to').value:null;
   const cents=parseAmt($('#m-amt').value), date=$('#m-date').value, note=$('#m-note').value.trim();
   const ownEl=$('#m-own'), owner=ownEl?ownEl.value:'yo';
-  const toOwn=type==='transfer'?($('#m-toown').value||owner):owner;
+  const byOwn=type==='transfer'&&movMode()==='own';
+  const toOwn=byOwn?($('#m-toown').value||owner):owner;
   if(!account){err.textContent='Elegí una cuenta.';return;}
+  if(byOwn&&toOwn===owner){err.textContent='Elegí dos dueños distintos.';return;}
   if(isNaN(cents)||cents===0){err.textContent='Ingresá un monto distinto de cero.';return;}
   if(type!=='yield'&&cents<0){err.textContent='El monto va en positivo. Para una salida elegí Egreso.';return;}
   if(type==='transfer'&&(!to||(to===account&&toOwn===owner))){err.textContent=(to&&to===account)?'Para pasar plata dentro de la misma cuenta elegí dos dueños distintos.':'Elegí dos cuentas distintas.';return;}
@@ -2068,7 +2081,8 @@ document.addEventListener('click',e=>{
     let pay=null;
     if(b.dataset.card){ const ca=accById(b.dataset.card), o=S.lastOwner; pay={to:ca.id,cents:Math.max(0,-balance(ca)),from:bestAcc(o,'ARS'),owner:o}; }
     if(b.dataset.move){ const ma=accById(b.dataset.move), l=nonzeroOwners(ownerBalances(ma)), ng=l.filter(x=>x.v<0).sort((x,y)=>x.v-y.v)[0], ps=l.filter(x=>x.v>0).sort((x,y)=>y.v-x.v)[0];
-      pay={from:ma.id,to:ma.id,owner:ps?ps.id:'yo',toOwner:ng?ng.id:'',cents:ng?-ng.v:0,kind:ng?'loan':''}; }
+      pay={from:ma.id,to:ma.id,owner:ps?ps.id:'yo',toOwner:ng?ng.id:'',cents:ng?-ng.v:0,kind:ng?'loan':'',mode:'own'}; }
+    if(b.dataset.mode&&!pay) pay={mode:b.dataset.mode};
     openModal('mov',{m:null,type:b.dataset.type||'',acc:b.dataset.acc||'',pay:pay});
   }
   else if(act==='debt-pay'){ const p=debtPairs()[+id];
@@ -2172,7 +2186,8 @@ document.addEventListener('change',e=>{
   if(t.dataset&&t.dataset.filter){ S[t.dataset.filter]=t.value; S.limit=100; S.xLimit=100; if(t.dataset.filter==='xPeriod') S.xCat=''; render(); }
   else if(t.dataset&&t.dataset.xcat){ setExpCat(t.dataset.xcat,t.value); }
   else if(t.dataset&&t.dataset.f){ reviewField(t); }
-  else if(t.name==='mtype') toggleTo();
+  else if(t.name==='mtype'||t.name==='mmode') toggleTo();
+  else if(t.id==='m-to'){ if(S.modal) S.modal.toTouched=true; refreshMovForm(); }
   else if(t.id==='m-kind'){ if(S.modal) S.modal.kindTouched=true; refreshMovForm(); }
   else if(t.id==='m-acc'||t.id==='m-to'||t.id==='m-own'||t.id==='m-toown'||t.id==='m-for') refreshMovForm();
   else if(t.id==='o-hold') updOpTotal();
