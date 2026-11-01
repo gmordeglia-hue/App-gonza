@@ -989,7 +989,7 @@ function movRow(m,run,noDate){
   const main=m.note?m.note:(m.type==='transfer'?(b&&b.kind==='card'?'Pago de tarjeta':xo?({repay:'Devolución',loan:'Préstamo',gift:'Aporte'}[m.kind]||'Traspaso'):'Movimiento interno'):typeLabel(m.type));
   const where=(m.type==='transfer'&&m.to!==m.account)?accLabel(a)+' → '+accLabel(b):accLabel(a);
   let amtHtml;
-  if(m.type==='transfer'&&!S.fAcc){ const c1=curOf(m.account), c2=m.to?curOf(m.to):c1; amtHtml=amt((m.toCents!=null&&c1!==c2)?money(m.cents,c1)+' → '+money(m.toCents,c2):money(m.cents,c1),'muted'); }
+  if(m.type==='transfer'&&(!S.fAcc||(m.to===m.account&&!S.fOwner))){ const c1=curOf(m.account), c2=m.to?curOf(m.to):c1; amtHtml=amt((m.toCents!=null&&c1!==c2)?money(m.cents,c1)+' → '+money(m.toCents,c2):money(m.cents,c1),'muted'); }
   else{
     let e;
     if(S.fAcc) e=S.fOwner?effectOwner(m,S.fAcc,S.fOwner):effect(m,S.fAcc);
@@ -1511,23 +1511,32 @@ function refreshMovForm(){
   if(cross){ $('#m-amt2-l').textContent='Monto que llega'+(ct==='USD'?' (US$)':' ($)'); updRate(); }
   const hint=$('#m-hint'); if(!hint) return;
   const own=$('#m-own'), ov=own?own.value:'yo', amtC=parseAmt($('#m-amt').value);
-  let ht='';
+  let ht='', due=0;
   if(tr){
     const tw=$('#m-toown'), tv=tw?tw.value:ov, diff=tv!==ov, kw=$('#kind-wrap'); if(kw) kw.hidden=!diff;
     if(diff){
       const kd=$('#m-kind'), M=S.modal||{};
       if(kd&&!M.kindTouched&&!(M.m&&M.m.kind)&&!(M.pay&&M.pay.kind)) kd.value=owes(ov,tv,cf1)>0?'repay':'loan';
       const k=kd?kd.value:'gift';
+      if(k==='repay'&&!cross) due=owes(ov,tv,cf1);
       ht=k==='repay'?ownerName(ov)+' le devuelve a '+ownerName(tv)+' y baja lo que le debe, sin importar de qué cuenta venía la deuda.':k==='loan'?'La plata pasa a ser de '+ownerName(tv)+', que le queda debiendo a '+ownerName(ov)+'.':'La plata pasa a ser de '+ownerName(tv)+' y no queda ninguna deuda.';
     }else ht='Movimiento interno: la plata sigue siendo de '+ownerName(ov)+' y no cuenta como ingreso ni gasto.';
   }else if(type==='in'){
-    const rp=$('#m-repay'); if(rp&&rp.value) ht='Entra plata de '+ownerName(rp.value)+' que le devuelve a '+ownerName(ov)+': baja lo que le debe y no cuenta como ingreso.';
+    const rp=$('#m-repay'); if(rp&&rp.value) due=owes(rp.value,ov,cf1);
+    if(rp&&rp.value) ht='Entra plata de '+ownerName(rp.value)+' que le devuelve a '+ownerName(ov)+': baja lo que le debe y no cuenta como ingreso.';
   }else if(type==='out'){
     const fs=$('#m-for'), mw=$('#for-multi'); if(mw) mw.hidden=!(fs&&fs.value==='__multi');
     if(fs&&fs.value==='__multi'){
       let sum=0; $$('[data-fo]').forEach(i=>{ const v=i.value.trim()?parseAmt(i.value):0; if(v>0) sum+=v; });
       ht='Repartido: '+money(sum,cf1)+(amtC>0?' de '+money(amtC,cf1):'')+'. Lo que no es de '+ownerName(ov)+' queda como deuda con '+ownerName(ov)+'.';
     }else if(fs&&fs.value&&fs.value!==ov) ht=ownerName(fs.value)+' le va a deber '+(amtC>0?money(amtC,cf1):'este monto')+' a '+ownerName(ov)+'.';
+  }
+  {
+    const ai=$('#m-amt'), M=S.modal||{}, same=()=>M.autoAmt&&parseAmt(ai.value)===parseAmt(M.autoAmt);
+    if(due>0&&!M.m){
+      if(!ai.value.trim()||same()){ ai.value=centsToInput(due); M.autoAmt=ai.value; }
+      ht+=' Debe '+money(due,cf1)+' en total'+(parseAmt(ai.value)<due?': devolvés una parte':'')+'.';
+    }else if(same()){ ai.value=''; M.autoAmt=''; }
   }
   hint.textContent=ht;
 }
@@ -1857,6 +1866,21 @@ function saveMov(){
       if(nb<0){ S.modal.negOK=true; err.textContent='Esto deja la plata de '+ownerName(owner)+' en esa cuenta en '+money(nb,curOf(account))+'. Tocá Guardar otra vez para confirmar.'; return; }
     }
   }
+  {
+    let deb='', cre='', back=0;
+    if(type==='transfer'&&toOwn!==owner&&($('#m-kind')||{}).value==='repay'){ deb=owner; cre=toOwn; if(m&&m.type==='transfer'&&m.kind==='repay'&&(m.owner||'yo')===owner&&m.toOwner===toOwn) back=m.cents; }
+    else if(type==='in'&&$('#m-repay')&&$('#m-repay').value&&$('#m-repay').value!==owner){ deb=$('#m-repay').value; cre=owner; if(m&&m.repayFrom===deb&&(m.owner||'yo')===owner) back=m.cents; }
+    if(deb&&!S.modal.repOK){
+      const cu=curOf(account), due=Math.max(0,owes(deb,cre,cu)-owes(cre,deb,cu)+back);
+      if(cents>due){
+        S.modal.repOK=true;
+        err.textContent=due>0
+          ?ownerName(deb)+' solo le debe '+money(due,cu)+' a '+ownerName(cre)+'. Lo que sobra quedaría como deuda al revés. Tocá Guardar otra vez para anotarlo igual.'
+          :ownerName(deb)+' no le debe nada a '+ownerName(cre)+', así que esto quedaría como deuda al revés. Si es plata de '+ownerName(cre)+' que figuraba como de '+ownerName(deb)+', elegí «Aporte, sin deuda». Si no, tocá Guardar otra vez.';
+        return;
+      }
+    }
+  }
   const data={type:type,account:account,cents:cents,date:date,note:note,createdAt:m?m.createdAt:Date.now()};
   if(to) data.to=to;
   if(toCents!=null) data.toCents=toCents;
@@ -2146,7 +2170,7 @@ document.addEventListener('input',e=>{
   if(t.id==='mq'){ S.fQ=t.value; S.limit=100; S.qf=true; render(); return; }
   if(t.closest&&t.closest('#uform')) updPreview();
   else if(t.dataset&&t.dataset.f) reviewField(t);
-  else if(t.closest&&t.closest('#mform,#oform')&&S.modal){ S.modal.negOK=false; if(t.id==='m-amt'||t.id==='m-amt2') updRate(); if(t.closest('#mform')) refreshMovForm(); if(t.closest('#oform')) updOpTotal(); }
+  else if(t.closest&&t.closest('#mform,#oform')&&S.modal){ S.modal.negOK=false; S.modal.repOK=false; if(t.id==='m-amt'||t.id==='m-amt2') updRate(); if(t.closest('#mform')) refreshMovForm(); if(t.closest('#oform')) updOpTotal(); }
 });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&S.modal) closeModal(); });
 const TABS=['resumen','movimientos','rendimientos','tarjetas','analisis','ajustes','mas','inversiones','deudas'];
