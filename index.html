@@ -669,7 +669,6 @@ function planDate(start,k){
   const yy=y+Math.floor(t/12), mm=((t%12)+12)%12, dim=new Date(yy,mm+1,0).getDate();
   return yy+'-'+String(mm+1).padStart(2,'0')+'-'+String(Math.min(dd,dim)).padStart(2,'0');
 }
-let planNotes=[];
 function applyPlans(){
   const today=todayStr(); let ch=false;
   S.plans.forEach(p=>{
@@ -677,15 +676,24 @@ function applyPlans(){
       const dt=planDate(p.start,p.done); if(dt>today) break;
       p.done++; ch=true;
       S.movs.push(Object.assign({},p.data,{id:newId(),date:dt,note:(p.data.note||'Compra')+' · cuota '+p.done+'/'+p.n,plan:p.id,createdAt:Date.now()+p.done}));
-      const ow=p.data.owner||'yo', cu=curOf(p.data.account);
-      if(p.data.for) for(const k in p.data.for) if(k!==ow) planNotes.push(ownerName(k)+(ow==='yo'?' te debe ':' le debe a '+ownerName(ow)+' ')+money(p.data.for[k],cu)+' por '+(p.data.note||'Compra')+' (cuota '+p.done+'/'+p.n+')');
     }
   });
   const n=S.plans.length; S.plans=S.plans.filter(p=>p.done<p.n);
   if(ch||S.plans.length!==n) persist();
   return ch;
 }
-function showPlanNotes(){ if(!planNotes.length) return; const t=planNotes.slice(0,3).join(' · ')+(planNotes.length>3?' · y '+(planNotes.length-3)+' más':'')+'. Acordate de hacer el pase.'; planNotes=[]; toast(t,9000); }
+/* Aviso de Inicio: una vez por mes, si un dueño te debe cuotas de este mes y todavía no hubo devolución este mes. */
+function planReminder(){
+  const cm=todayStr().slice(0,7), P=debtPairs(); let h='';
+  P.forEach((p,i)=>{
+    const cur=p.items.filter(it=>it.a===p.debtor&&it.v>0&&it.m.plan&&it.m.date.slice(0,7)===cm);
+    if(!cur.length) return;
+    if(p.items.some(it=>it.a===p.debtor&&it.v<0&&!it.m.plan&&it.m.date.slice(0,7)===cm)) return;
+    const sum=cur.reduce((s,it)=>s+it.v,0);
+    h+='<div class="notice info"><span>'+esc(ownerName(p.debtor))+(p.creditor==='yo'?' te debe ':' le debe a '+esc(ownerName(p.creditor))+' ')+amt(money(sum,p.c))+' de cuotas de este mes. Acordate de hacer el pase.</span><button class="btn sm" data-act="debt-pay" data-id="'+i+'">Devolver</button></div>';
+  });
+  return h;
+}
 function plansBlock(){
   if(!S.plans.length) return '';
   return '<section><h2 class="sec">Cuotas en curso</h2><div class="list-head">'+S.plans.map(p=>{
@@ -956,6 +964,7 @@ function viewResumen(){
   let L='';
   if(!S.movs.length&&accs.every(a=>!a.initial)) L+='<div class="note"><strong>Primer paso:</strong> cargá lo que tenés hoy en cada cuenta. Tocá una cuenta y entrá a <em>Editar cuenta</em> para completar el saldo inicial. Después anotá cada movimiento con el botón <strong>+</strong> y usá <em>Actualizar saldos</em> para los rendimientos.</div>';
   L+=backupNote();
+  L+=planReminder();
   L+='<section class="total">'+chips+'<div class="eyebrow">Total en pesos</div><div class="big">'+amt(money(tot.ARS),tot.ARS<0?'neg':'')+'</div>';
   if(hasY) L+='<div class="stats"><div class="stat"><span class="small muted">Rendimiento hoy</span><b>'+amt(signed(yT.ARS),cls(yT.ARS))+'</b></div><div class="stat"><span class="small muted">Rendimiento del mes</span><b>'+amt(signed(yM.ARS),cls(yM.ARS))+'</b></div></div>';
   const cardDebt=accs.filter(a=>a.kind==='card'&&!isU(a)).reduce((s,a)=>s+Math.min(0,val(a)),0);
@@ -1965,7 +1974,7 @@ function saveMov(){
     if(m.split){ const w={}; for(const k in m.split) w[k]=Math.abs(m.split[k]); data.split=allocate(cents,w); }
   }
   if(type!=='yield') S.lastOwner=owner;
-  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); showPlanNotes(); return; }
+  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); return; }
   putMov(m?m.id:null,data); closeModal(); toast('Guardado');
 }
 function saveUpd(){
@@ -2268,8 +2277,7 @@ function init(){
   S.xPeriod='';
   applyPlans();
   onData();
-  showPlanNotes();
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&applyPlans()){ onData(); showPlanNotes(); } });
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&applyPlans()) onData(); });
   armAutoBackup();
   try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(_){}
 }
