@@ -22,7 +22,7 @@ html.locked body>*:not(#lock){visibility:hidden!important}
 .debt+.debt{border-top:1px solid var(--line)}
 .debt .amt{white-space:nowrap;font-weight:600}
 </style>
-<script>window.APP_VERSION='v16'</script>
+<script>window.APP_VERSION='v17'</script>
 <style>
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body{margin:0}
@@ -399,7 +399,7 @@ const DEFAULT_RULES=[
 ];
 
 /* ---------- Estado ---------- */
-const S={accounts:[],movs:[],owners:[],cards:[],cats:[],rules:[],stmts:[],exp:[],hlds:[],ops:[],loans:[],claims:[],hd:'',selOp:'',confirmOp:'',
+const S={accounts:[],movs:[],owners:[],cards:[],cats:[],rules:[],stmts:[],exp:[],hlds:[],ops:[],loans:[],claims:[],plans:[],hd:'',selOp:'',confirmOp:'',
   error:'',tab:'resumen',fAcc:'',fType:'',fMonth:'',fOwner:'',limit:100,chartAcc:'',
   xPeriod:'',xCard:'',xCat:'',xLimit:100,modal:null,confirmDel:'',confirmX:'',confirmS:'',hide:false,lastOwner:'yo',
   acc:'',selMov:'',open:{},rOwner:'yo',fQ:'',qf:false};
@@ -520,7 +520,7 @@ const KEY='mis-cuentas-v1', BK='mis-cuentas-copia';
 let storeOK=true;
 function persist(){
   try{
-    localStorage.setItem(KEY,JSON.stringify({v:5,accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims}));
+    localStorage.setItem(KEY,JSON.stringify({v:5,accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans}));
     storeOK=true; return true;
   }catch(_){ storeOK=false; return false; }
 }
@@ -566,6 +566,7 @@ function normalizeData(d,fresh){
   o.exp=arr(d.exp).filter(x=>x&&str(x.id)&&str(x.date)&&typeof x.cents==='number'&&str(x.period));
   o.hlds=Array.isArray(d.hlds)?d.hlds.filter(x=>x&&str(x.id)&&str(x.name)).map(x=>Object.assign({initial:0,kind:'nom',cur:'USD',px:[]},x)):[{id:'ymcxo',name:'YMCXO',initial:0,kind:'nom',cur:'USD',px:[]}];
   o.claims=arr(d.claims).filter(x=>x&&str(x.id)&&str(x.from)&&str(x.to)&&typeof x.cents==='number');
+  o.plans=arr(d.plans).filter(x=>x&&str(x.id)&&str(x.start)&&x.data&&typeof x.n==='number'&&typeof x.done==='number'&&typeof x.data.cents==='number'&&str(x.data.account));
   o.loans=arr(d.loans).filter(x=>x&&str(x.id)&&str(x.owner)&&str(x.date)&&typeof x.cents==='number');
   o.ops=arr(d.ops).filter(x=>x&&str(x.id)&&str(x.hold)&&str(x.date)&&typeof x.qty==='number'&&(x.type==='buy'||x.type==='sell'));
   return o;
@@ -634,7 +635,7 @@ function backupBlock(){
     +'<input type="file" id="imp-file" accept=".json,application/json" hidden></section>';
 }
 function exportBackup(msg){
-  const data=JSON.stringify({v:5,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims});
+  const data=JSON.stringify({v:5,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans});
   const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
   const a=document.createElement('a'); a.href=url; a.download='mis-cuentas-'+todayStr()+'.json';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
@@ -662,6 +663,35 @@ function impModal(d){
 
 /* ---------- Escritura ---------- */
 function putAcc(id,data){ const i=S.accounts.findIndex(a=>a.id===id), o=Object.assign({id:id},data); if(i>-1) S.accounts[i]=o; else S.accounts.push(o); persist(); onData(); }
+/* ---------- Gastos en cuotas: se cargan una vez y la app debita una cuota por mes ---------- */
+function planDate(start,k){
+  const y=+start.slice(0,4), mo=+start.slice(5,7)-1, dd=+start.slice(8,10), t=mo+k;
+  const yy=y+Math.floor(t/12), mm=((t%12)+12)%12, dim=new Date(yy,mm+1,0).getDate();
+  return yy+'-'+String(mm+1).padStart(2,'0')+'-'+String(Math.min(dd,dim)).padStart(2,'0');
+}
+function applyPlans(){
+  const today=todayStr(); let ch=false;
+  S.plans.forEach(p=>{
+    while(p.done<p.n){
+      const dt=planDate(p.start,p.done); if(dt>today) break;
+      p.done++; ch=true;
+      S.movs.push(Object.assign({},p.data,{id:newId(),date:dt,note:(p.data.note||'Compra')+' · cuota '+p.done+'/'+p.n,plan:p.id,createdAt:Date.now()+p.done}));
+    }
+  });
+  const n=S.plans.length; S.plans=S.plans.filter(p=>p.done<p.n);
+  if(ch||S.plans.length!==n) persist();
+  return ch;
+}
+function plansBlock(){
+  if(!S.plans.length) return '';
+  return '<section><h2 class="sec">Cuotas en curso</h2><div class="list-head">'+S.plans.map(p=>{
+    const next=planDate(p.start,p.done), cur=curOf(p.data.account);
+    const acts=S.confirmPlan===p.id
+      ?'<span>¿Cancelar las '+(p.n-p.done)+' cuotas que faltan?</span><button class="link danger" data-act="plan-yes" data-id="'+esc(p.id)+'">Sí</button><button class="link" data-act="plan-no">No</button>'
+      :'<button class="link danger" data-act="plan-ask" data-id="'+esc(p.id)+'">Cancelar las que faltan</button>';
+    return '<div class="mov"><div><div class="mov-t">'+esc(p.data.note||'Compra')+'</div><div class="mov-s">'+p.done+' de '+p.n+' debitadas · próxima el '+fmtDate(next)+' · '+esc(accLabel(accById(p.data.account)))+'</div></div><div class="mov-amt">'+amt(money(p.data.cents,cur))+'<div class="muted">por mes</div></div><div class="mov-actions">'+acts+'</div></div>';
+  }).join('')+'</div></section>';
+}
 function putMov(id,data){
   if(id){ const i=S.movs.findIndex(m=>m.id===id), o=Object.assign({id:id},data); if(i>-1) S.movs[i]=o; else S.movs.push(o); }
   else S.movs.push(Object.assign({id:newId()},data));
@@ -1060,7 +1090,7 @@ function viewMovs(){
     +'<details class="more-f"'+((S.fAcc||S.fOwner||S.fMonth)?' open':'')+'><summary>Más filtros</summary><div class="filters">'
     +'<select data-filter="fAcc" aria-label="Filtrar por cuenta">'+opt('','Todas las cuentas',!S.fAcc)+accsAll.map(a=>opt(a.id,accLabel(a),S.fAcc===a.id)).join('')+'</select>'
     +'<select data-filter="fOwner" aria-label="Filtrar por dueño">'+opt('','Todos los dueños',!S.fOwner)+S.owners.map(o=>opt(o.id,o.name,S.fOwner===o.id)).join('')+'</select>'
-    +'<select data-filter="fMonth" aria-label="Filtrar por mes">'+opt('','Todos los meses',!S.fMonth)+months.map(mo=>opt(mo,monthLabel(mo),S.fMonth===mo)).join('')+'</select></div></details>';
+    +'<select data-filter="fMonth" aria-label="Filtrar por mes">'+opt('','Todos los meses',!S.fMonth)+months.map(mo=>opt(mo,monthLabel(mo),S.fMonth===mo)).join('')+'</select></div></details>'+plansBlock();
   if(!S.movs.length) return h+'<div class="empty"><h2>Sin movimientos todavía</h2><p>Los ingresos, egresos, transferencias y rendimientos que cargues aparecen acá, del más nuevo al más viejo.</p><button class="btn primary" data-act="mov-new">Cargar el primero</button></div>';
   if(!list.length) return h+'<div class="note">No hay movimientos con estos filtros.</div>';
   let last='', open=false;
@@ -1509,6 +1539,7 @@ function movModal(m,pt,pa,pay){
     +own+trBlock+forBlock+repBlock
     +'<label for="m-amt" id="m-amt-l">'+(isY?'Rendimiento (puede ser negativo)':'Monto')+'</label><input id="m-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+amtVal+'" data-focus>'
     +'<div id="amt2-wrap" hidden><label for="m-amt2" id="m-amt2-l">Monto que llega</label><input id="m-amt2" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(m&&m.toCents!=null?centsToInput(m.toCents):'')+'"><p class="hint" id="m-rate"></p></div>'
+    +(isY||m?'':'<div id="cq-wrap" hidden><label for="m-cuotas">¿En cuántas cuotas? (dejá 1 si es un solo pago)</label><input id="m-cuotas" inputmode="numeric" autocomplete="off" placeholder="1" value="1"><p class="hint">Si son varias, el monto de arriba es el de <strong>cada cuota</strong>. La primera se debita en la fecha que elijas y las demás una por mes, solas.</p></div>')
     +'<label for="m-date">Fecha</label><input id="m-date" type="date" value="'+esc(m?m.date:todayStr())+'">'
     +'<label for="m-note">Detalle (opcional)</label><input id="m-note" maxlength="120" autocomplete="off" value="'+esc(m?m.note:'')+'">'
     +'<p class="hint" id="m-hint"></p>'
@@ -1523,6 +1554,7 @@ function toggleTo(){
   const tl=$('label[for=m-to]'); if(tl) tl.textContent=byOwn?'Entra en la cuenta (puede ser la misma)':'Hacia';
   const tw=$('#tr-wrap'); if(tw) tw.hidden=!byOwn;
   const fw=$('#for-wrap'); if(fw) fw.hidden=t!=='out';
+  const cw=$('#cq-wrap'); if(cw) cw.hidden=t!=='out';
   const rw=$('#rep-wrap'); if(rw) rw.hidden=t!=='in';
   const ol=$('#m-own-l'); if(ol) ol.textContent=byOwn?'De quién es la plata que sale':tr?'De quién es la plata':t==='in'?'De quién es la plata que entra':'Con plata de quién';
   // Entre dueños: si no se eligió otra cosa, la plata queda en la misma cuenta
@@ -1879,6 +1911,8 @@ function saveMov(){
     toCents=parseAmt($('#m-amt2').value);
     if(isNaN(toCents)||toCents<=0){err.textContent='Escribí cuánto llega a la otra cuenta (las monedas son distintas).';return;}
   }
+  let nq=1;
+  if(type==='out'&&!m&&$('#m-cuotas')){ const raw=$('#m-cuotas').value.trim(); if(raw){ if(!/^\d{1,2}$/.test(raw)||+raw<1||+raw>60){err.textContent='Las cuotas tienen que ser un número entre 1 y 60.';return;} nq=+raw; } }
   let forMap=null;
   if(type==='out'){
     const fs=$('#m-for'), fv=fs?fs.value:'';
@@ -1927,6 +1961,7 @@ function saveMov(){
     if(m.split){ const w={}; for(const k in m.split) w[k]=Math.abs(m.split[k]); data.split=allocate(cents,w); }
   }
   if(type!=='yield') S.lastOwner=owner;
+  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); return; }
   putMov(m?m.id:null,data); closeModal(); toast('Guardado');
 }
 function saveUpd(){
@@ -2090,6 +2125,9 @@ document.addEventListener('click',e=>{
       if(fa) openModal('mov',{m:null,type:'transfer',pay:{owner:p.debtor,toOwner:p.creditor,kind:'repay',cents:p.cents,from:fa,to:ta}});
       else openModal('mov',{m:null,type:'in',pay:{owner:p.creditor,repayFrom:p.debtor,cents:p.cents,from:ta}}); } }
   else if(act==='claim-new') openModal('claim',{});
+  else if(act==='plan-ask'){ S.confirmPlan=id; render(); }
+  else if(act==='plan-no'){ S.confirmPlan=''; render(); }
+  else if(act==='plan-yes'){ S.plans=S.plans.filter(x=>x.id!==id); S.confirmPlan=''; persist(); onData(); toast('Cuotas canceladas'); }
   else if(act==='claim-del'){
     if(!b.dataset.sure){ b.dataset.sure='1'; b.textContent='Tocá otra vez para eliminar'; return; }
     S.claims=S.claims.filter(x=>x.id!==id); persist(); onData(); toast('Eliminado');
@@ -2224,7 +2262,9 @@ function init(){
   readHash();
   if(!loadStore()) return;
   S.xPeriod='';
+  applyPlans();
   onData();
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&applyPlans()) onData(); });
   armAutoBackup();
   try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(_){}
 }
