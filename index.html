@@ -22,7 +22,7 @@ html.locked body>*:not(#lock){visibility:hidden!important}
 .debt+.debt{border-top:1px solid var(--line)}
 .debt .amt{white-space:nowrap;font-weight:600}
 </style>
-<script>window.APP_VERSION='v17'</script>
+<script>window.APP_VERSION='v18'</script>
 <style>
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body{margin:0}
@@ -669,13 +669,17 @@ function planDate(start,k){
   const yy=y+Math.floor(t/12), mm=((t%12)+12)%12, dim=new Date(yy,mm+1,0).getDate();
   return yy+'-'+String(mm+1).padStart(2,'0')+'-'+String(Math.min(dd,dim)).padStart(2,'0');
 }
+/* Monto de la cuota k: el total dividido en partes iguales; la última ajusta los centavos. */
+function planCuota(p,k){ if(p.total==null) return p.data.cents; const b=Math.floor(p.total/p.n); return k===p.n?p.total-b*(p.n-1):b; }
 function applyPlans(){
   const today=todayStr(); let ch=false;
   S.plans.forEach(p=>{
     while(p.done<p.n){
       const dt=planDate(p.start,p.done); if(dt>today) break;
       p.done++; ch=true;
-      S.movs.push(Object.assign({},p.data,{id:newId(),date:dt,note:(p.data.note||'Compra')+' · cuota '+p.done+'/'+p.n,plan:p.id,createdAt:Date.now()+p.done}));
+      const cq=planCuota(p,p.done), cd={cents:cq};
+      if(p.data.for&&p.total!=null) cd.for=allocate(cq,p.data.for);
+      S.movs.push(Object.assign({},p.data,cd,{id:newId(),date:dt,note:(p.data.note||'Compra')+' · cuota '+p.done+'/'+p.n,plan:p.id,createdAt:Date.now()+p.done}));
     }
   });
   const n=S.plans.length; S.plans=S.plans.filter(p=>p.done<p.n);
@@ -701,7 +705,7 @@ function plansBlock(){
     const acts=S.confirmPlan===p.id
       ?'<span>¿Cancelar las '+(p.n-p.done)+' cuotas que faltan?</span><button class="link danger" data-act="plan-yes" data-id="'+esc(p.id)+'">Sí</button><button class="link" data-act="plan-no">No</button>'
       :'<button class="link danger" data-act="plan-ask" data-id="'+esc(p.id)+'">Cancelar las que faltan</button>';
-    return '<div class="mov"><div><div class="mov-t">'+esc(p.data.note||'Compra')+'</div><div class="mov-s">'+p.done+' de '+p.n+' debitadas · próxima el '+fmtDate(next)+' · '+esc(accLabel(accById(p.data.account)))+'</div></div><div class="mov-amt">'+amt(money(p.data.cents,cur))+'<div class="muted">por mes</div></div><div class="mov-actions">'+acts+'</div></div>';
+    return '<div class="mov"><div><div class="mov-t">'+esc(p.data.note||'Compra')+'</div><div class="mov-s">'+p.done+' de '+p.n+' debitadas · próxima el '+fmtDate(next)+' · '+esc(accLabel(accById(p.data.account)))+'</div></div><div class="mov-amt">'+amt(money(planCuota(p,Math.min(p.done+1,p.n)),cur))+'<div class="muted">por mes'+(p.total!=null?' · total '+amt(money(p.total,cur)):'')+'</div></div><div class="mov-actions">'+acts+'</div></div>';
   }).join('')+'</div></section>';
 }
 function putMov(id,data){
@@ -1552,7 +1556,7 @@ function movModal(m,pt,pa,pay){
     +own+trBlock+forBlock+repBlock
     +'<label for="m-amt" id="m-amt-l">'+(isY?'Rendimiento (puede ser negativo)':'Monto')+'</label><input id="m-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+amtVal+'" data-focus>'
     +'<div id="amt2-wrap" hidden><label for="m-amt2" id="m-amt2-l">Monto que llega</label><input id="m-amt2" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(m&&m.toCents!=null?centsToInput(m.toCents):'')+'"><p class="hint" id="m-rate"></p></div>'
-    +(isY||m?'':'<div id="cq-wrap" hidden><label for="m-cuotas">¿En cuántas cuotas? (dejá 1 si es un solo pago)</label><input id="m-cuotas" inputmode="numeric" autocomplete="off" placeholder="1" value="1"><p class="hint">Si son varias, el monto de arriba es el de <strong>cada cuota</strong>. La primera se debita en la fecha que elijas y las demás una por mes, solas.</p></div>')
+    +(isY||m?'':'<div id="cq-wrap" hidden><label for="m-cuotas">¿En cuántas cuotas? (dejá 1 si es un solo pago)</label><input id="m-cuotas" inputmode="numeric" autocomplete="off" placeholder="1" value="1"><p class="hint">Poné arriba el monto <strong>total</strong> de la compra. La app lo divide por las cuotas: cada mes se debita (y se anota como deuda) solo la cuota de ese mes. La primera es en la fecha que elijas.</p><p class="hint" id="cq-pre"></p></div>')
     +'<label for="m-date">Fecha</label><input id="m-date" type="date" value="'+esc(m?m.date:todayStr())+'">'
     +'<label for="m-note">Detalle (opcional)</label><input id="m-note" maxlength="120" autocomplete="off" value="'+esc(m?m.note:'')+'">'
     +'<p class="hint" id="m-hint"></p>'
@@ -1580,6 +1584,7 @@ function refreshMovForm(){
   const r=$('input[name=mtype]:checked'), type=r?r.value:'', tr=type==='transfer';
   const cf1=curOf(accEl.value), toEl=$('#m-to'), ct=toEl&&toEl.value?curOf(toEl.value):cf1, cross=tr&&cf1!==ct;
   const isY=S.modal&&S.modal.m&&S.modal.m.type==='yield';
+  const cp=$('#cq-pre'); if(cp){ const nn=parseInt(($('#m-cuotas')||{}).value,10), cc=parseAmt($('#m-amt').value); cp.textContent=(nn>1&&cc>0)?'Cada cuota: '+money(Math.floor(cc/nn),cf1)+(cc%nn?' (la última ajusta los centavos)':''):''; }
   $('#m-amt-l').textContent=(isY?'Rendimiento (puede ser negativo)':(cross?'Monto que sale':'Monto'))+(cf1==='USD'?' (US$)':' ($)');
   $('#amt2-wrap').hidden=!cross;
   if(cross){ $('#m-amt2-l').textContent='Monto que llega'+(ct==='USD'?' (US$)':' ($)'); updRate(); }
@@ -1941,7 +1946,7 @@ function saveMov(){
   if((type==='out'||type==='transfer')&&!S.modal.negOK){
     const acc=accById(account), ob=acc?ownerBalances(acc):{};
     if(acc&&acc.kind!=='card'){
-      const nb=(ob[owner]||0)-(m?effectOwner(m,account,owner):0)-cents;
+      const nb=(ob[owner]||0)-(m?effectOwner(m,account,owner):0)-(nq>1?Math.floor(cents/nq):cents);
       if(nb<0){ S.modal.negOK=true; err.textContent='Esto deja la plata de '+ownerName(owner)+' en esa cuenta en '+money(nb,curOf(account))+'. Tocá Guardar otra vez para confirmar.'; return; }
     }
   }
@@ -1974,7 +1979,7 @@ function saveMov(){
     if(m.split){ const w={}; for(const k in m.split) w[k]=Math.abs(m.split[k]); data.split=allocate(cents,w); }
   }
   if(type!=='yield') S.lastOwner=owner;
-  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); return; }
+  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,total:cents,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); return; }
   putMov(m?m.id:null,data); closeModal(); toast('Guardado');
 }
 function saveUpd(){
