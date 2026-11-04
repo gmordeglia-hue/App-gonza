@@ -669,6 +669,7 @@ function planDate(start,k){
   const yy=y+Math.floor(t/12), mm=((t%12)+12)%12, dim=new Date(yy,mm+1,0).getDate();
   return yy+'-'+String(mm+1).padStart(2,'0')+'-'+String(Math.min(dd,dim)).padStart(2,'0');
 }
+let planNotes=[];
 function applyPlans(){
   const today=todayStr(); let ch=false;
   S.plans.forEach(p=>{
@@ -676,12 +677,15 @@ function applyPlans(){
       const dt=planDate(p.start,p.done); if(dt>today) break;
       p.done++; ch=true;
       S.movs.push(Object.assign({},p.data,{id:newId(),date:dt,note:(p.data.note||'Compra')+' · cuota '+p.done+'/'+p.n,plan:p.id,createdAt:Date.now()+p.done}));
+      const ow=p.data.owner||'yo', cu=curOf(p.data.account);
+      if(p.data.for) for(const k in p.data.for) if(k!==ow) planNotes.push(ownerName(k)+(ow==='yo'?' te debe ':' le debe a '+ownerName(ow)+' ')+money(p.data.for[k],cu)+' por '+(p.data.note||'Compra')+' (cuota '+p.done+'/'+p.n+')');
     }
   });
   const n=S.plans.length; S.plans=S.plans.filter(p=>p.done<p.n);
   if(ch||S.plans.length!==n) persist();
   return ch;
 }
+function showPlanNotes(){ if(!planNotes.length) return; const t=planNotes.slice(0,3).join(' · ')+(planNotes.length>3?' · y '+(planNotes.length-3)+' más':'')+'. Acordate de hacer el pase.'; planNotes=[]; toast(t,9000); }
 function plansBlock(){
   if(!S.plans.length) return '';
   return '<section><h2 class="sec">Cuotas en curso</h2><div class="list-head">'+S.plans.map(p=>{
@@ -1888,7 +1892,7 @@ function openModal(kind,data){
 }
 function closeModal(){ S.modal=null; $('#modal').innerHTML=''; }
 let toastT=null;
-function toast(t){ const el=$('#toast'); el.textContent=t; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>{el.hidden=true},2800); }
+function toast(t,ms){ const el=$('#toast'); el.textContent=t; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>{el.hidden=true},ms||2800); }
 
 /* ---------- Guardado ---------- */
 function saveMov(){
@@ -1961,7 +1965,7 @@ function saveMov(){
     if(m.split){ const w={}; for(const k in m.split) w[k]=Math.abs(m.split[k]); data.split=allocate(cents,w); }
   }
   if(type!=='yield') S.lastOwner=owner;
-  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); return; }
+  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); showPlanNotes(); return; }
   putMov(m?m.id:null,data); closeModal(); toast('Guardado');
 }
 function saveUpd(){
@@ -2264,7 +2268,8 @@ function init(){
   S.xPeriod='';
   applyPlans();
   onData();
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&applyPlans()) onData(); });
+  showPlanNotes();
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&applyPlans()){ onData(); showPlanNotes(); } });
   armAutoBackup();
   try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(_){}
 }
