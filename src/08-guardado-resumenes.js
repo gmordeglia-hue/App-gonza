@@ -20,7 +20,7 @@ function saveMov(){
     if(isNaN(toCents)||toCents<=0){err.textContent='Escribí cuánto llega a la otra cuenta (las monedas son distintas).';return;}
   }
   let nq=1;
-  if(type==='out'&&!m&&$('#m-cuotas')){ const raw=$('#m-cuotas').value.trim(); if(raw){ if(!/^\d{1,2}$/.test(raw)||+raw<1||+raw>60){err.textContent='Las cuotas tienen que ser un número entre 1 y 60.';return;} nq=+raw; } }
+  if(type==='out'&&!m&&isCard(account)&&$('#m-cuotas')){ const raw=$('#m-cuotas').value.trim(); if(raw){ if(!/^\d{1,2}$/.test(raw)||+raw<1||+raw>60){err.textContent='Las cuotas tienen que ser un número entre 1 y 60.';return;} nq=+raw; } }
   let forMap=null;
   if(type==='out'){
     const fs=$('#m-for'), fv=fs?fs.value:'';
@@ -69,9 +69,11 @@ function saveMov(){
     if(m.split){ const w={}; for(const k in m.split) w[k]=Math.abs(m.split[k]); data.split=allocate(cents,w); }
   }
   if(type!=='yield') S.lastOwner=owner;
-  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,total:cents,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); return; }
-  putMov(m?m.id:null,data); closeModal(); toast('Guardado');
+  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,total:cents,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); again(type,account); return; }
+  putMov(m?m.id:null,data); closeModal(); toast('Guardado'); again(type,account);
 }
+/* «Guardar y otro»: vuelve a abrir el formulario con el mismo tipo y cuenta. */
+function again(type,account){ if(S.again){ S.again=false; openModal('mov',{m:null,type:type,acc:account,pay:null}); } }
 function saveUpd(){
   const err=$('#u-err'); err.textContent='';
   const rows=updRows().filter(r=>r.raw);

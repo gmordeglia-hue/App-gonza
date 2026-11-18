@@ -35,7 +35,7 @@ async function enable(){
 function overlay(){
   let el=document.getElementById('lock'); if(el) return el;
   el=document.createElement('div'); el.id='lock';
-  el.innerHTML='<img src="icon-192.png" alt="" width="72" height="72">'
+  el.innerHTML='<img src="icono-192.png" alt="" width="72" height="72">'
     +'<h1>Mis cuentas</h1><p class="lock-msg">Usá tu huella o el PIN del celular para entrar.</p>'
     +'<button class="btn primary" data-lock="unlock">Desbloquear</button>';
   document.body.appendChild(el); return el;

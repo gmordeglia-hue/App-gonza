@@ -1294,17 +1294,22 @@ function movModal(m,pt,pa,pay){
   const forBlock=isY?'':'<div id="for-wrap" hidden><label for="m-for">¿Para quién es el gasto?</label><select id="m-for">'+opt('','Para el mismo dueño de la plata',!forSel)+S.owners.map(o=>opt(o.id,o.name,forSel===o.id)).join('')+opt('__multi','Repartir entre varios…',forSel==='__multi')+'</select>'
     +'<div id="for-multi" hidden>'+S.owners.map(o=>'<label class="fo-row"><span>'+esc(o.name)+'</span><input data-fo="'+esc(o.id)+'" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(fm&&fm[o.id]?centsToInput(fm[o.id]):'')+'"></label>').join('')+'</div></div>';
   const repBlock=isY?'':'<div id="rep-wrap" hidden><label for="m-repay">¿Es una devolución de una deuda?</label><select id="m-repay">'+opt('','No, es plata que entra',!repSel)+S.owners.map(o=>opt(o.id,'Sí, me la devuelve '+o.name,repSel===o.id)).join('')+'</select></div>';
+  /* Lo básico va arriba; dueño, para quién, devolución y cuotas quedan en «Más opciones». */
+  const isCardSel=!!(sel&&isCard(sel)), ownerOdd=!!(m&&((m.owner||'yo')!=='yo'||m.for||m.repayFrom||m.toOwner));
+  const openMore=(!isY&&(ownerOdd||modeSel==='own'||(type==='out'&&isCardSel)||!!pay.repayFrom||!!pay.toOwner))?' open':'';
+  const moreBlock=isY?'':'<details id="m-more" class="more"'+openMore+'><summary id="m-more-s">Más opciones</summary>'+own+trBlock+forBlock+repBlock
++'</details>';
   return '<form id="mform" class="sheet" novalidate><h2>'+(m?(isY?'Editar rendimiento':'Editar movimiento'):'Nuevo movimiento')+'</h2>'+seg+modeSeg
-    +'<label for="m-acc" id="m-acc-l">Cuenta</label><select id="m-acc">'+accOptions(sel,m?[m.account]:[])+'</select>'
-    +'<div id="to-wrap" hidden><label for="m-to">Hacia</label><select id="m-to">'+accOptions(toSel,m&&m.to?[m.to]:[])+'</select></div>'
-    +own+trBlock+forBlock+repBlock
     +'<label for="m-amt" id="m-amt-l">'+(isY?'Rendimiento (puede ser negativo)':'Monto')+'</label><input id="m-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+amtVal+'" data-focus>'
     +'<div id="amt2-wrap" hidden><label for="m-amt2" id="m-amt2-l">Monto que llega</label><input id="m-amt2" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(m&&m.toCents!=null?centsToInput(m.toCents):'')+'"><p class="hint" id="m-rate"></p></div>'
-    +(isY||m?'':'<div id="cq-wrap" hidden><label for="m-cuotas">¿En cuántas cuotas? (dejá 1 si es un solo pago)</label><input id="m-cuotas" inputmode="numeric" autocomplete="off" placeholder="1" value="1"><p class="hint">Poné arriba el monto <strong>total</strong> de la compra. La app lo divide por las cuotas: cada mes se debita (y se anota como deuda) solo la cuota de ese mes. La primera es en la fecha que elijas.</p><p class="hint" id="cq-pre"></p></div>')
-    +'<label for="m-date">Fecha</label><input id="m-date" type="date" value="'+esc(m?m.date:todayStr())+'">'
+    +'<label for="m-acc" id="m-acc-l">Cuenta</label><select id="m-acc">'+accOptions(sel,m?[m.account]:[])+'</select>'
+    +'<div id="to-wrap" hidden><label for="m-to">Hacia</label><select id="m-to">'+accOptions(toSel,m&&m.to?[m.to]:[])+'</select></div>'
+    +(m?'':'<div id="cq-wrap" hidden><label for="m-cuotas">¿En cuántas cuotas? (dejá 1 si es un solo pago)</label><input id="m-cuotas" inputmode="numeric" autocomplete="off" placeholder="1" value="1"><p class="hint">Poné arriba el monto <strong>total</strong> de la compra. La app lo divide por las cuotas: cada mes se debita (y se anota como deuda) solo la cuota de ese mes. La primera es en la fecha que elijas.</p><p class="hint" id="cq-pre"></p></div>')
     +'<label for="m-note">Detalle (opcional)</label><input id="m-note" maxlength="120" autocomplete="off" value="'+esc(m?m.note:'')+'">'
+    +'<label for="m-date">Fecha</label><input id="m-date" type="date" value="'+esc(m?m.date:todayStr())+'">'
+    +moreBlock
     +'<p class="hint" id="m-hint"></p>'
-    +'<p class="err" id="m-err" role="alert"></p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary">Guardar</button></div></form>';
+    +'<p class="err" id="m-err" role="alert"></p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button>'+(m?'':'<button type="submit" class="btn" data-again="1">Guardar y otro</button>')+'<button type="submit" class="btn primary">Guardar</button></div></form>';
 }
 const movMode=()=>{ const r=$('input[name=mmode]:checked'); return r?r.value:'acc'; };
 function toggleTo(){
@@ -1314,8 +1319,8 @@ function toggleTo(){
   const l=$('#m-acc-l'); if(l) l.textContent=byOwn?'Sale de la cuenta':tr?'Desde':'Cuenta';
   const tl=$('label[for=m-to]'); if(tl) tl.textContent=byOwn?'Entra en la cuenta (puede ser la misma)':'Hacia';
   const tw=$('#tr-wrap'); if(tw) tw.hidden=!byOwn;
+  const mo=$('#m-more'); if(mo&&(byOwn||(t==='out'&&isCard(($('#m-acc')||{}).value)))) mo.open=true;
   const fw=$('#for-wrap'); if(fw) fw.hidden=t!=='out';
-  const cw=$('#cq-wrap'); if(cw) cw.hidden=t!=='out';
   const rw=$('#rep-wrap'); if(rw) rw.hidden=t!=='in';
   const ol=$('#m-own-l'); if(ol) ol.textContent=byOwn?'De quién es la plata que sale':tr?'De quién es la plata':t==='in'?'De quién es la plata que entra':'Con plata de quién';
   // Entre dueños: si no se eligió otra cosa, la plata queda en la misma cuenta
@@ -1328,6 +1333,7 @@ function refreshMovForm(){
   const r=$('input[name=mtype]:checked'), type=r?r.value:'', tr=type==='transfer';
   const cf1=curOf(accEl.value), toEl=$('#m-to'), ct=toEl&&toEl.value?curOf(toEl.value):cf1, cross=tr&&cf1!==ct;
   const isY=S.modal&&S.modal.m&&S.modal.m.type==='yield';
+  const cw=$('#cq-wrap'); if(cw) cw.hidden=!(type==='out'&&isCard(accEl.value));
   const cp=$('#cq-pre'); if(cp){ const nn=parseInt(($('#m-cuotas')||{}).value,10), cc=parseAmt($('#m-amt').value); cp.textContent=(nn>1&&cc>0)?'Cada cuota: '+money(Math.floor(cc/nn),cf1)+(cc%nn?' (la última ajusta los centavos)':''):''; }
   $('#m-amt-l').textContent=(isY?'Rendimiento (puede ser negativo)':(cross?'Monto que sale':'Monto'))+(cf1==='USD'?' (US$)':' ($)');
   $('#amt2-wrap').hidden=!cross;
@@ -1364,6 +1370,7 @@ function refreshMovForm(){
     }else if(same()){ ai.value=''; M.autoAmt=''; }
   }
   hint.textContent=ht;
+  const ms=$('#m-more-s'); if(ms&&own){ const ow=ownerName(ov); ms.textContent='Más opciones · plata de '+ow+(tr||type!=='out'?'':''); }
 }
 function updRate(){
   const el=$('#m-rate'); if(!el) return;
@@ -1686,7 +1693,7 @@ function saveMov(){
     if(isNaN(toCents)||toCents<=0){err.textContent='Escribí cuánto llega a la otra cuenta (las monedas son distintas).';return;}
   }
   let nq=1;
-  if(type==='out'&&!m&&$('#m-cuotas')){ const raw=$('#m-cuotas').value.trim(); if(raw){ if(!/^\d{1,2}$/.test(raw)||+raw<1||+raw>60){err.textContent='Las cuotas tienen que ser un número entre 1 y 60.';return;} nq=+raw; } }
+  if(type==='out'&&!m&&isCard(account)&&$('#m-cuotas')){ const raw=$('#m-cuotas').value.trim(); if(raw){ if(!/^\d{1,2}$/.test(raw)||+raw<1||+raw>60){err.textContent='Las cuotas tienen que ser un número entre 1 y 60.';return;} nq=+raw; } }
   let forMap=null;
   if(type==='out'){
     const fs=$('#m-for'), fv=fs?fs.value:'';
@@ -1735,9 +1742,11 @@ function saveMov(){
     if(m.split){ const w={}; for(const k in m.split) w[k]=Math.abs(m.split[k]); data.split=allocate(cents,w); }
   }
   if(type!=='yield') S.lastOwner=owner;
-  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,total:cents,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); return; }
-  putMov(m?m.id:null,data); closeModal(); toast('Guardado');
+  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,total:cents,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); again(type,account); return; }
+  putMov(m?m.id:null,data); closeModal(); toast('Guardado'); again(type,account);
 }
+/* «Guardar y otro»: vuelve a abrir el formulario con el mismo tipo y cuenta. */
+function again(type,account){ if(S.again){ S.again=false; openModal('mov',{m:null,type:type,acc:account,pay:null}); } }
 function saveUpd(){
   const err=$('#u-err'); err.textContent='';
   const rows=updRows().filter(r=>r.raw);
@@ -2001,7 +2010,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('submit',e=>{
   e.preventDefault();
   const f=e.target.id;
-  if(f==='mform') saveMov(); else if(f==='uform') saveUpd(); else if(f==='aform') saveAcc();
+  if(f==='mform'){ S.again=!!(e.submitter&&e.submitter.dataset&&e.submitter.dataset.again); saveMov(); } else if(f==='uform') saveUpd(); else if(f==='aform') saveAcc();
   else if(f==='cform') saveCard(); else if(f==='kform') saveCat(); else if(f==='wform') saveOwner(); else if(f==='sform') stmtAnalyze(); else if(f==='pform') saveSMonth();
   else if(f==='vform') savePx(); else if(f==='hform') saveHold(); else if(f==='oform') saveOp(); else if(f==='bform') saveCobro();
 });

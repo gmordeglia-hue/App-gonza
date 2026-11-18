@@ -112,7 +112,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('submit',e=>{
   e.preventDefault();
   const f=e.target.id;
-  if(f==='mform') saveMov(); else if(f==='uform') saveUpd(); else if(f==='aform') saveAcc();
+  if(f==='mform'){ S.again=!!(e.submitter&&e.submitter.dataset&&e.submitter.dataset.again); saveMov(); } else if(f==='uform') saveUpd(); else if(f==='aform') saveAcc();
   else if(f==='cform') saveCard(); else if(f==='kform') saveCat(); else if(f==='wform') saveOwner(); else if(f==='sform') stmtAnalyze(); else if(f==='pform') saveSMonth();
   else if(f==='vform') savePx(); else if(f==='hform') saveHold(); else if(f==='oform') saveOp(); else if(f==='bform') saveCobro();
 });
