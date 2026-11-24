@@ -1,7 +1,7 @@
 /* ---------- Estado ---------- */
 const S={accounts:[],movs:[],owners:[],cards:[],cats:[],rules:[],stmts:[],exp:[],hlds:[],ops:[],loans:[],claims:[],plans:[],hd:'',selOp:'',confirmOp:'',
   error:'',tab:'resumen',fAcc:'',fType:'',fMonth:'',fOwner:'',limit:100,chartAcc:'',
-  xPeriod:'',xCard:'',xCat:'',xLimit:100,modal:null,confirmDel:'',confirmX:'',confirmS:'',hide:false,lastOwner:'yo',
+  xPeriod:'',xCard:'',xCat:'',xLimit:100,modal:null,confirmDel:'',confirmX:'',confirmS:'',hide:false,lastOwner:(prefGet().owner||'yo'),
   acc:'',selMov:'',open:{},rOwner:'yo',fQ:'',qf:false};
 const byOrder=(a,b)=>((a.order||0)-(b.order||0))||String(a.name).localeCompare(String(b.name));
 const liveAccs=()=>S.accounts.filter(a=>!a.archived).sort(byOrder);

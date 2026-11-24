@@ -35,9 +35,11 @@ function saveMov(){
   if(type==='in'&&m&&m.repayFrom&&!$('#m-repay')){ /* se conserva */ }
   if((type==='out'||type==='transfer')&&!S.modal.negOK){
     const acc=accById(account), ob=acc?ownerBalances(acc):{};
-    if(acc&&acc.kind!=='card'){
+    /* Si la cuenta todavía no tiene nada cargado (saldo inicial 0 y sin movimientos), no hay saldo real contra qué comparar: no avisa. */
+    const conDatos=acc&&(acc.initial!==0||S.movs.some(x=>x.account===acc.id||x.to===acc.id));
+    if(acc&&acc.kind!=='card'&&conDatos){
       const nb=(ob[owner]||0)-(m?effectOwner(m,account,owner):0)-(nq>1?Math.floor(cents/nq):cents);
-      if(nb<0){ S.modal.negOK=true; err.textContent='Esto deja la plata de '+ownerName(owner)+' en esa cuenta en '+money(nb,curOf(account))+'. Tocá Guardar otra vez para confirmar.'; return; }
+      if(nb<0){ S.modal.negOK=true; guardarIgual(); err.textContent='Esto deja la plata de '+ownerName(owner)+' en esa cuenta en '+money(nb,curOf(account))+'. Tocá «Guardar igual» para confirmar.'; return; }
     }
   }
   {
@@ -47,7 +49,7 @@ function saveMov(){
     if(deb&&!S.modal.repOK){
       const cu=curOf(account), due=Math.max(0,owes(deb,cre,cu)-owes(cre,deb,cu)+back);
       if(cents>due){
-        S.modal.repOK=true;
+        S.modal.repOK=true; guardarIgual();
         err.textContent=due>0
           ?ownerName(deb)+' solo le debe '+money(due,cu)+' a '+ownerName(cre)+'. Lo que sobra quedaría como deuda al revés. Tocá Guardar otra vez para anotarlo igual.'
           :ownerName(deb)+' no le debe nada a '+ownerName(cre)+', así que esto quedaría como deuda al revés. Si es plata de '+ownerName(cre)+' que figuraba como de '+ownerName(deb)+', elegí «Aporte, sin deuda». Si no, tocá Guardar otra vez.';
@@ -68,10 +70,11 @@ function saveMov(){
     if(m.base!=null) data.base=m.base; if(m.days!=null) data.days=m.days;
     if(m.split){ const w={}; for(const k in m.split) w[k]=Math.abs(m.split[k]); data.split=allocate(cents,w); }
   }
-  if(type!=='yield') S.lastOwner=owner;
+  if(type!=='yield'){ S.lastOwner=owner; if(!m) prefSet({owner:owner,acc:account}); }
   if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,total:cents,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); again(type,account); return; }
   putMov(m?m.id:null,data); closeModal(); toast('Guardado'); again(type,account);
 }
+function guardarIgual(){ const sb=$('#mform button.primary[type=submit]'); if(sb) sb.textContent='Guardar igual'; }
 /* «Guardar y otro»: vuelve a abrir el formulario con el mismo tipo y cuenta. */
 function again(type,account){ if(S.again){ S.again=false; openModal('mov',{m:null,type:type,acc:account,pay:null}); } }
 function saveUpd(){

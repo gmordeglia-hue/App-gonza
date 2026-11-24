@@ -260,3 +260,5 @@ textarea{resize:vertical;line-height:1.4}
   .home{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:22px;align-items:start}
   .toast{bottom:24px}
 }
+.quick{margin:2px 0 12px}.quick input{width:100%;font-size:17px}
+.quick .hint{margin:6px 0 0;min-height:1.2em}

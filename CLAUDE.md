@@ -6,8 +6,9 @@ PWA de finanzas personales (cuentas, movimientos, tarjetas, inversiones). Todo s
 - `index.html`: pantalla + librerías de lectura de PDF (pesa ~1,4 MB; no leerlo entero, buscar con grep).
 - `src/*.js`: código fuente, en 9 partes numeradas. **Es lo único que se edita.**
 - `app.js`: generado por `python build.py` a partir de `src/`. **No se edita a mano.**
+- `rapido.js`: intérprete de la caja «Escribilo en una línea» del formulario de movimientos (frases como «super 15000 bbva»). No guarda: completa el formulario.
 - `styles.css`, `lock.js` (bloqueo por huella), `nav.js`, `miles.js`.
-- `sw.js`: service worker para uso offline (`VERSION` = `'v27'`, caché `mis-cuentas-<VERSION>`).
+- `sw.js`: service worker para uso offline (`VERSION` = `'v29'`, caché `mis-cuentas-<VERSION>`).
 - `tests/probar.py`: pruebas con Playwright y datos inventados.
 - `LEEME.md`: explicación para humanos del mismo flujo.
 
@@ -15,7 +16,7 @@ PWA de finanzas personales (cuentas, movimientos, tarjetas, inversiones). Todo s
 1. Editar `src/` (o `styles.css`, etc.).
 2. `python build.py`
 3. `python tests/probar.py` → debe terminar en «TODO OK».
-4. Subir `APP_VERSION` en `index.html` (hoy `v20`) **y** `VERSION` en `sw.js` (hoy `v27`). Son contadores distintos: se suben los dos, cada uno en +1.
+4. Subir `APP_VERSION` en `index.html` (hoy `v22`) **y** `VERSION` en `sw.js` (hoy `v29`). Son contadores distintos: se suben los dos, cada uno en +1.
 5. Commit y push.
 
 ## Reglas

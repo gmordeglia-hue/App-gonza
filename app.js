@@ -80,7 +80,7 @@ const DEFAULT_RULES=[
 /* ---------- Estado ---------- */
 const S={accounts:[],movs:[],owners:[],cards:[],cats:[],rules:[],stmts:[],exp:[],hlds:[],ops:[],loans:[],claims:[],plans:[],hd:'',selOp:'',confirmOp:'',
   error:'',tab:'resumen',fAcc:'',fType:'',fMonth:'',fOwner:'',limit:100,chartAcc:'',
-  xPeriod:'',xCard:'',xCat:'',xLimit:100,modal:null,confirmDel:'',confirmX:'',confirmS:'',hide:false,lastOwner:'yo',
+  xPeriod:'',xCard:'',xCat:'',xLimit:100,modal:null,confirmDel:'',confirmX:'',confirmS:'',hide:false,lastOwner:(prefGet().owner||'yo'),
   acc:'',selMov:'',open:{},rOwner:'yo',fQ:'',qf:false};
 const byOrder=(a,b)=>((a.order||0)-(b.order||0))||String(a.name).localeCompare(String(b.name));
 const liveAccs=()=>S.accounts.filter(a=>!a.archived).sort(byOrder);
@@ -1198,6 +1198,9 @@ function accOptions(sel,extra){
   return S.accounts.filter(a=>ids.has(a.id)).sort(byOrder).map(a=>'<option value="'+esc(a.id)+'"'+(a.id===sel?' selected':'')+'>'+esc(accLabel(a))+'</option>').join('');
 }
 function ownOpts(sel){ return S.owners.map(o=>opt(o.id,o.name,o.id===sel)).join(''); }
+/* Lo último que cargaste (cuenta y dueño): queda guardado en el celular para precargarlo la próxima vez. */
+function prefGet(){ try{ return JSON.parse(localStorage.getItem('cuentas-ultimo')||'{}')||{}; }catch(_){ return {}; } }
+function prefSet(o){ try{ localStorage.setItem('cuentas-ultimo',JSON.stringify(Object.assign(prefGet(),o))); }catch(_){} }
 function bestAcc(owner,cur){
   let best='',bv=0;
   liveAccs().forEach(a=>{ if(a.kind==='card'||curOf(a.id)!==cur) return; const v=ownerBalances(a)[owner]||0; if(v>bv){ bv=v; best=a.id; } });
@@ -1271,11 +1274,12 @@ function saveClaim(){
 function owes(a,b,cur){ const p=debtPairs().find(x=>x.c===cur&&x.debtor===a&&x.creditor===b); return p?p.cents:0; }
 function movModal(m,pt,pa,pay){
   pay=pay||{};
-  const isY=m&&m.type==='yield', type=m?m.type:(pt||'in');
+  const isY=m&&m.type==='yield', type=m?m.type:(pt||'out');
   const seg=isY?'':'<fieldset class="seg"><legend class="muted" style="position:absolute;left:-9999px">Tipo</legend>'
     +[['in','Ingreso'],['out','Egreso'],['transfer','Transferencia']].map(t=>'<label><input type="radio" name="mtype" value="'+t[0]+'"'+(type===t[0]?' checked':'')+'><span>'+t[1]+'</span></label>').join('')+'</fieldset>';
   const first=liveAccs()[0];
-  const sel=m?m.account:(pay.from||((pa&&accById(pa)&&!accById(pa).archived)?pa:(first&&first.id)));
+  const lastAcc=prefGet().acc, lastOk=lastAcc&&accById(lastAcc)&&!accById(lastAcc).archived&&accById(lastAcc).kind!=='card';
+  const sel=m?m.account:(pay.from||((pa&&accById(pa)&&!accById(pa).archived)?pa:(lastOk?lastAcc:(first&&first.id))));
   const ownSel=m?(m.owner||'yo'):(pay.owner||S.lastOwner);
   const toOwnSel=m?(m.toOwner||ownSel):(pay.toOwner||ownSel);
   const kindSel=m?(m.kind||''):(pay.kind||'');
@@ -1296,10 +1300,11 @@ function movModal(m,pt,pa,pay){
   const repBlock=isY?'':'<div id="rep-wrap" hidden><label for="m-repay">¿Es una devolución de una deuda?</label><select id="m-repay">'+opt('','No, es plata que entra',!repSel)+S.owners.map(o=>opt(o.id,'Sí, me la devuelve '+o.name,repSel===o.id)).join('')+'</select></div>';
   /* Lo básico va arriba; dueño, para quién, devolución y cuotas quedan en «Más opciones». */
   const isCardSel=!!(sel&&isCard(sel)), ownerOdd=!!(m&&((m.owner||'yo')!=='yo'||m.for||m.repayFrom||m.toOwner));
-  const openMore=(!isY&&(ownerOdd||modeSel==='own'||(type==='out'&&isCardSel)||!!pay.repayFrom||!!pay.toOwner))?' open':'';
+  const openMore=(!isY&&(ownerOdd||(!m&&ownSel!=='yo')||modeSel==='own'||(type==='out'&&isCardSel)||!!pay.repayFrom||!!pay.toOwner))?' open':'';
   const moreBlock=isY?'':'<details id="m-more" class="more"'+openMore+'><summary id="m-more-s">Más opciones</summary>'+own+trBlock+forBlock+repBlock
 +'</details>';
-  return '<form id="mform" class="sheet" novalidate><h2>'+(m?(isY?'Editar rendimiento':'Editar movimiento'):'Nuevo movimiento')+'</h2>'+seg+modeSeg
+  const quickBox=(m||Object.keys(pay).length)?'':'<div class="quick"><label for="m-quick">Escribilo en una línea</label><input id="m-quick" type="text" autocomplete="off" autocapitalize="none" enterkeyhint="done" placeholder="super 15000 bbva" data-focus><p class="hint" id="m-quick-h" aria-live="polite"></p></div>';
+  return '<form id="mform" class="sheet" novalidate><h2>'+(m?(isY?'Editar rendimiento':'Editar movimiento'):'Nuevo movimiento')+'</h2>'+quickBox+seg+modeSeg
     +'<label for="m-amt" id="m-amt-l">'+(isY?'Rendimiento (puede ser negativo)':'Monto')+'</label><input id="m-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+amtVal+'" data-focus>'
     +'<div id="amt2-wrap" hidden><label for="m-amt2" id="m-amt2-l">Monto que llega</label><input id="m-amt2" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(m&&m.toCents!=null?centsToInput(m.toCents):'')+'"><p class="hint" id="m-rate"></p></div>'
     +'<label for="m-acc" id="m-acc-l">Cuenta</label><select id="m-acc">'+accOptions(sel,m?[m.account]:[])+'</select>'
@@ -1310,6 +1315,35 @@ function movModal(m,pt,pa,pay){
     +moreBlock
     +'<p class="hint" id="m-hint"></p>'
     +'<p class="err" id="m-err" role="alert"></p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button>'+(m?'':'<button type="submit" class="btn" data-again="1">Guardar y otro</button>')+'<button type="submit" class="btn primary">Guardar</button></div></form>';
+}
+/* Caja de una línea: interpreta la frase (rapido.js) y completa el formulario. Nunca guarda: confirmás con «Guardar». */
+function applyQuick(txt){
+  const hint=$('#m-quick-h'); if(!hint) return;
+  if(!txt.trim()){ hint.textContent=''; return; }
+  const r=QuickMov.parse(txt,{accounts:S.accounts,owners:S.owners,today:todayStr()});
+  const set=(sel,v)=>{ const el=$(sel); if(el&&v!=null) el.value=v; };
+  /* Lo que el formulario traía al abrir (cuenta, destino y dueño): si la frase no nombra algo, vuelve a eso y no queda lo de la frase anterior. */
+  if(!S.modal.qdef){ const g=x=>{ const el=$(x); return el?el.value:null; }; S.modal.qdef={acc:g('#m-acc'),to:g('#m-to'),own:g('#m-own'),toown:g('#m-toown')}; }
+  const D=S.modal.qdef;
+  const rad=$('input[name=mtype][value='+r.type+']'); if(rad) rad.checked=true;
+  const rm=$('input[name=mmode][value=acc]'); if(rm) rm.checked=true;
+  set('#m-acc',r.acc||D.acc);
+  set('#m-to',r.type==='transfer'?(r.to||D.to):D.to);
+  const ow=r.owner||D.own; set('#m-own',ow); set('#m-toown',r.owner||D.toown||ow);
+  { const mo=$('#m-more'); if(mo&&ow!=='yo') mo.open=true; }
+  set('#m-amt',r.cents!=null?centsToInput(r.cents):'');
+  set('#m-date',r.date||todayStr());
+  set('#m-note',r.note);
+  toggleTo();
+  const T={out:'Egreso',in:'Ingreso',transfer:'Transferencia'};
+  const a=r.acc&&accById(r.acc), b=r.to&&accById(r.to), cur=a?a.cur:'ARS';
+  const bits=[T[r.type]];
+  bits.push(r.cents!=null?money(r.cents,cur):'falta el monto');
+  bits.push(a?accLabel(a)+(b?' → '+accLabel(b):''):'elegí la cuenta');
+  if(r.owner) bits.push('plata de '+ownerName(r.owner));
+  if(r.date&&r.date!==todayStr()) bits.push(fmtDate(r.date,true));
+  if(r.note) bits.push('«'+r.note+'»');
+  hint.textContent='Entendí: '+bits.join(' · ')+'. Revisá y tocá Guardar.';
 }
 const movMode=()=>{ const r=$('input[name=mmode]:checked'); return r?r.value:'acc'; };
 function toggleTo(){
@@ -1708,9 +1742,11 @@ function saveMov(){
   if(type==='in'&&m&&m.repayFrom&&!$('#m-repay')){ /* se conserva */ }
   if((type==='out'||type==='transfer')&&!S.modal.negOK){
     const acc=accById(account), ob=acc?ownerBalances(acc):{};
-    if(acc&&acc.kind!=='card'){
+    /* Si la cuenta todavía no tiene nada cargado (saldo inicial 0 y sin movimientos), no hay saldo real contra qué comparar: no avisa. */
+    const conDatos=acc&&(acc.initial!==0||S.movs.some(x=>x.account===acc.id||x.to===acc.id));
+    if(acc&&acc.kind!=='card'&&conDatos){
       const nb=(ob[owner]||0)-(m?effectOwner(m,account,owner):0)-(nq>1?Math.floor(cents/nq):cents);
-      if(nb<0){ S.modal.negOK=true; err.textContent='Esto deja la plata de '+ownerName(owner)+' en esa cuenta en '+money(nb,curOf(account))+'. Tocá Guardar otra vez para confirmar.'; return; }
+      if(nb<0){ S.modal.negOK=true; guardarIgual(); err.textContent='Esto deja la plata de '+ownerName(owner)+' en esa cuenta en '+money(nb,curOf(account))+'. Tocá «Guardar igual» para confirmar.'; return; }
     }
   }
   {
@@ -1720,7 +1756,7 @@ function saveMov(){
     if(deb&&!S.modal.repOK){
       const cu=curOf(account), due=Math.max(0,owes(deb,cre,cu)-owes(cre,deb,cu)+back);
       if(cents>due){
-        S.modal.repOK=true;
+        S.modal.repOK=true; guardarIgual();
         err.textContent=due>0
           ?ownerName(deb)+' solo le debe '+money(due,cu)+' a '+ownerName(cre)+'. Lo que sobra quedaría como deuda al revés. Tocá Guardar otra vez para anotarlo igual.'
           :ownerName(deb)+' no le debe nada a '+ownerName(cre)+', así que esto quedaría como deuda al revés. Si es plata de '+ownerName(cre)+' que figuraba como de '+ownerName(deb)+', elegí «Aporte, sin deuda». Si no, tocá Guardar otra vez.';
@@ -1741,10 +1777,11 @@ function saveMov(){
     if(m.base!=null) data.base=m.base; if(m.days!=null) data.days=m.days;
     if(m.split){ const w={}; for(const k in m.split) w[k]=Math.abs(m.split[k]); data.split=allocate(cents,w); }
   }
-  if(type!=='yield') S.lastOwner=owner;
+  if(type!=='yield'){ S.lastOwner=owner; if(!m) prefSet({owner:owner,acc:account}); }
   if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,total:cents,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); again(type,account); return; }
   putMov(m?m.id:null,data); closeModal(); toast('Guardado'); again(type,account);
 }
+function guardarIgual(){ const sb=$('#mform button.primary[type=submit]'); if(sb) sb.textContent='Guardar igual'; }
 /* «Guardar y otro»: vuelve a abrir el formulario con el mismo tipo y cuenta. */
 function again(type,account){ if(S.again){ S.again=false; openModal('mov',{m:null,type:type,acc:account,pay:null}); } }
 function saveUpd(){
@@ -2034,12 +2071,18 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('input',e=>{
   const t=e.target;
+  if(t.id==='m-kind'&&S.modal) S.modal.kindTouched=true; /* si no, refreshMovForm pisa lo elegido antes de que llegue el «change» */
+  if(t.id==='m-quick'){ if(S.modal){ S.modal.negOK=false; S.modal.repOK=false; } applyQuick(t.value); return; }
   if(t.id==='mq'){ S.fQ=t.value; S.limit=100; S.qf=true; render(); return; }
   if(t.closest&&t.closest('#uform')) updPreview();
   else if(t.dataset&&t.dataset.f) reviewField(t);
   else if(t.closest&&t.closest('#mform,#oform')&&S.modal){ S.modal.negOK=false; S.modal.repOK=false; if(t.id==='m-amt'||t.id==='m-amt2') updRate(); if(t.closest('#mform')) refreshMovForm(); if(t.closest('#oform')) updOpTotal(); }
 });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&S.modal) closeModal(); });
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&S.modal) closeModal();
+  /* Enter en la caja de una línea no guarda: baja el teclado y deja el foco en «Guardar». */
+  if(e.key==='Enter'&&e.target&&e.target.id==='m-quick'){ e.preventDefault(); const sb=$('#mform button.primary[type=submit]'); if(sb) sb.focus(); }
+});
 const TABS=['resumen','movimientos','rendimientos','tarjetas','analisis','ajustes','mas','inversiones','deudas'];
 function readHash(){ const h=navHash().replace('#',''); S.tab=TABS.indexOf(h)>-1?h:'resumen'; }
 window.addEventListener('hashchange',()=>{ readHash(); S.acc=''; S.hd=''; S.selMov=''; S.selOp=''; render(); window.scrollTo(0,0); });

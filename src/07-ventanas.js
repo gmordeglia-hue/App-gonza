@@ -4,6 +4,9 @@ function accOptions(sel,extra){
   return S.accounts.filter(a=>ids.has(a.id)).sort(byOrder).map(a=>'<option value="'+esc(a.id)+'"'+(a.id===sel?' selected':'')+'>'+esc(accLabel(a))+'</option>').join('');
 }
 function ownOpts(sel){ return S.owners.map(o=>opt(o.id,o.name,o.id===sel)).join(''); }
+/* Lo último que cargaste (cuenta y dueño): queda guardado en el celular para precargarlo la próxima vez. */
+function prefGet(){ try{ return JSON.parse(localStorage.getItem('cuentas-ultimo')||'{}')||{}; }catch(_){ return {}; } }
+function prefSet(o){ try{ localStorage.setItem('cuentas-ultimo',JSON.stringify(Object.assign(prefGet(),o))); }catch(_){} }
 function bestAcc(owner,cur){
   let best='',bv=0;
   liveAccs().forEach(a=>{ if(a.kind==='card'||curOf(a.id)!==cur) return; const v=ownerBalances(a)[owner]||0; if(v>bv){ bv=v; best=a.id; } });
@@ -77,11 +80,12 @@ function saveClaim(){
 function owes(a,b,cur){ const p=debtPairs().find(x=>x.c===cur&&x.debtor===a&&x.creditor===b); return p?p.cents:0; }
 function movModal(m,pt,pa,pay){
   pay=pay||{};
-  const isY=m&&m.type==='yield', type=m?m.type:(pt||'in');
+  const isY=m&&m.type==='yield', type=m?m.type:(pt||'out');
   const seg=isY?'':'<fieldset class="seg"><legend class="muted" style="position:absolute;left:-9999px">Tipo</legend>'
     +[['in','Ingreso'],['out','Egreso'],['transfer','Transferencia']].map(t=>'<label><input type="radio" name="mtype" value="'+t[0]+'"'+(type===t[0]?' checked':'')+'><span>'+t[1]+'</span></label>').join('')+'</fieldset>';
   const first=liveAccs()[0];
-  const sel=m?m.account:(pay.from||((pa&&accById(pa)&&!accById(pa).archived)?pa:(first&&first.id)));
+  const lastAcc=prefGet().acc, lastOk=lastAcc&&accById(lastAcc)&&!accById(lastAcc).archived&&accById(lastAcc).kind!=='card';
+  const sel=m?m.account:(pay.from||((pa&&accById(pa)&&!accById(pa).archived)?pa:(lastOk?lastAcc:(first&&first.id))));
   const ownSel=m?(m.owner||'yo'):(pay.owner||S.lastOwner);
   const toOwnSel=m?(m.toOwner||ownSel):(pay.toOwner||ownSel);
   const kindSel=m?(m.kind||''):(pay.kind||'');
@@ -102,10 +106,11 @@ function movModal(m,pt,pa,pay){
   const repBlock=isY?'':'<div id="rep-wrap" hidden><label for="m-repay">¿Es una devolución de una deuda?</label><select id="m-repay">'+opt('','No, es plata que entra',!repSel)+S.owners.map(o=>opt(o.id,'Sí, me la devuelve '+o.name,repSel===o.id)).join('')+'</select></div>';
   /* Lo básico va arriba; dueño, para quién, devolución y cuotas quedan en «Más opciones». */
   const isCardSel=!!(sel&&isCard(sel)), ownerOdd=!!(m&&((m.owner||'yo')!=='yo'||m.for||m.repayFrom||m.toOwner));
-  const openMore=(!isY&&(ownerOdd||modeSel==='own'||(type==='out'&&isCardSel)||!!pay.repayFrom||!!pay.toOwner))?' open':'';
+  const openMore=(!isY&&(ownerOdd||(!m&&ownSel!=='yo')||modeSel==='own'||(type==='out'&&isCardSel)||!!pay.repayFrom||!!pay.toOwner))?' open':'';
   const moreBlock=isY?'':'<details id="m-more" class="more"'+openMore+'><summary id="m-more-s">Más opciones</summary>'+own+trBlock+forBlock+repBlock
 +'</details>';
-  return '<form id="mform" class="sheet" novalidate><h2>'+(m?(isY?'Editar rendimiento':'Editar movimiento'):'Nuevo movimiento')+'</h2>'+seg+modeSeg
+  const quickBox=(m||Object.keys(pay).length)?'':'<div class="quick"><label for="m-quick">Escribilo en una línea</label><input id="m-quick" type="text" autocomplete="off" autocapitalize="none" enterkeyhint="done" placeholder="super 15000 bbva" data-focus><p class="hint" id="m-quick-h" aria-live="polite"></p></div>';
+  return '<form id="mform" class="sheet" novalidate><h2>'+(m?(isY?'Editar rendimiento':'Editar movimiento'):'Nuevo movimiento')+'</h2>'+quickBox+seg+modeSeg
     +'<label for="m-amt" id="m-amt-l">'+(isY?'Rendimiento (puede ser negativo)':'Monto')+'</label><input id="m-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+amtVal+'" data-focus>'
     +'<div id="amt2-wrap" hidden><label for="m-amt2" id="m-amt2-l">Monto que llega</label><input id="m-amt2" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(m&&m.toCents!=null?centsToInput(m.toCents):'')+'"><p class="hint" id="m-rate"></p></div>'
     +'<label for="m-acc" id="m-acc-l">Cuenta</label><select id="m-acc">'+accOptions(sel,m?[m.account]:[])+'</select>'
@@ -116,6 +121,35 @@ function movModal(m,pt,pa,pay){
     +moreBlock
     +'<p class="hint" id="m-hint"></p>'
     +'<p class="err" id="m-err" role="alert"></p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button>'+(m?'':'<button type="submit" class="btn" data-again="1">Guardar y otro</button>')+'<button type="submit" class="btn primary">Guardar</button></div></form>';
+}
+/* Caja de una línea: interpreta la frase (rapido.js) y completa el formulario. Nunca guarda: confirmás con «Guardar». */
+function applyQuick(txt){
+  const hint=$('#m-quick-h'); if(!hint) return;
+  if(!txt.trim()){ hint.textContent=''; return; }
+  const r=QuickMov.parse(txt,{accounts:S.accounts,owners:S.owners,today:todayStr()});
+  const set=(sel,v)=>{ const el=$(sel); if(el&&v!=null) el.value=v; };
+  /* Lo que el formulario traía al abrir (cuenta, destino y dueño): si la frase no nombra algo, vuelve a eso y no queda lo de la frase anterior. */
+  if(!S.modal.qdef){ const g=x=>{ const el=$(x); return el?el.value:null; }; S.modal.qdef={acc:g('#m-acc'),to:g('#m-to'),own:g('#m-own'),toown:g('#m-toown')}; }
+  const D=S.modal.qdef;
+  const rad=$('input[name=mtype][value='+r.type+']'); if(rad) rad.checked=true;
+  const rm=$('input[name=mmode][value=acc]'); if(rm) rm.checked=true;
+  set('#m-acc',r.acc||D.acc);
+  set('#m-to',r.type==='transfer'?(r.to||D.to):D.to);
+  const ow=r.owner||D.own; set('#m-own',ow); set('#m-toown',r.owner||D.toown||ow);
+  { const mo=$('#m-more'); if(mo&&ow!=='yo') mo.open=true; }
+  set('#m-amt',r.cents!=null?centsToInput(r.cents):'');
+  set('#m-date',r.date||todayStr());
+  set('#m-note',r.note);
+  toggleTo();
+  const T={out:'Egreso',in:'Ingreso',transfer:'Transferencia'};
+  const a=r.acc&&accById(r.acc), b=r.to&&accById(r.to), cur=a?a.cur:'ARS';
+  const bits=[T[r.type]];
+  bits.push(r.cents!=null?money(r.cents,cur):'falta el monto');
+  bits.push(a?accLabel(a)+(b?' → '+accLabel(b):''):'elegí la cuenta');
+  if(r.owner) bits.push('plata de '+ownerName(r.owner));
+  if(r.date&&r.date!==todayStr()) bits.push(fmtDate(r.date,true));
+  if(r.note) bits.push('«'+r.note+'»');
+  hint.textContent='Entendí: '+bits.join(' · ')+'. Revisá y tocá Guardar.';
 }
 const movMode=()=>{ const r=$('input[name=mmode]:checked'); return r?r.value:'acc'; };
 function toggleTo(){

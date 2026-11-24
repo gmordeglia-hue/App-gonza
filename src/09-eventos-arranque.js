@@ -136,12 +136,18 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('input',e=>{
   const t=e.target;
+  if(t.id==='m-kind'&&S.modal) S.modal.kindTouched=true; /* si no, refreshMovForm pisa lo elegido antes de que llegue el «change» */
+  if(t.id==='m-quick'){ if(S.modal){ S.modal.negOK=false; S.modal.repOK=false; } applyQuick(t.value); return; }
   if(t.id==='mq'){ S.fQ=t.value; S.limit=100; S.qf=true; render(); return; }
   if(t.closest&&t.closest('#uform')) updPreview();
   else if(t.dataset&&t.dataset.f) reviewField(t);
   else if(t.closest&&t.closest('#mform,#oform')&&S.modal){ S.modal.negOK=false; S.modal.repOK=false; if(t.id==='m-amt'||t.id==='m-amt2') updRate(); if(t.closest('#mform')) refreshMovForm(); if(t.closest('#oform')) updOpTotal(); }
 });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&S.modal) closeModal(); });
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&S.modal) closeModal();
+  /* Enter en la caja de una línea no guarda: baja el teclado y deja el foco en «Guardar». */
+  if(e.key==='Enter'&&e.target&&e.target.id==='m-quick'){ e.preventDefault(); const sb=$('#mform button.primary[type=submit]'); if(sb) sb.focus(); }
+});
 const TABS=['resumen','movimientos','rendimientos','tarjetas','analisis','ajustes','mas','inversiones','deudas'];
 function readHash(){ const h=navHash().replace('#',''); S.tab=TABS.indexOf(h)>-1?h:'resumen'; }
 window.addEventListener('hashchange',()=>{ readHash(); S.acc=''; S.hd=''; S.selMov=''; S.selOp=''; render(); window.scrollTo(0,0); });
