@@ -16,7 +16,7 @@ function applyPlans(){
       p.done++; ch=true;
       const cq=planCuota(p,p.done), cd={cents:cq};
       if(p.data.for&&p.total!=null) cd.for=allocate(cq,p.data.for);
-      S.movs.push(Object.assign({},p.data,cd,{id:newId(),date:dt,note:(p.data.note||'Compra')+' · cuota '+p.done+'/'+p.n,plan:p.id,createdAt:Date.now()+p.done}));
+      S.movs.push(Object.assign({},p.data,cd,{id:newId(),date:openDate(dt,today),note:(p.data.note||'Compra')+' · cuota '+p.done+'/'+p.n+(openDate(dt,today)!==dt?' (de '+monthLabel(dt.slice(0,7))+')':''),plan:p.id,createdAt:Date.now()+p.done}));
     }
   });
   const n=S.plans.length; S.plans=S.plans.filter(p=>p.done<p.n);
@@ -62,5 +62,5 @@ function putMov(id,data){
   else S.movs.push(Object.assign({id:newId()},data));
   persist(); onData();
 }
-function delMov(id){ const t=S.movs.find(m=>m.id===id); S.movs=S.movs.filter(m=>m.id!==id&&!(t&&t.pair&&m.pair===t.pair)); persist(); onData(); }
+function delMov(id){ { const t0=S.movs.find(m=>m.id===id); if(t0&&isClosed(t0.date)){ toast('Ese mes está cerrado. Reabrilo desde «Informe por dueño» para borrar.'); return false; } } const t=S.movs.find(m=>m.id===id); S.movs=S.movs.filter(m=>m.id!==id&&!(t&&t.pair&&m.pair===t.pair)); persist(); onData(); return true; }
 

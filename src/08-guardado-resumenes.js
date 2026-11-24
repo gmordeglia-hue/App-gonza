@@ -14,6 +14,7 @@ function saveMov(){
   if(type!=='yield'&&cents<0){err.textContent='El monto va en positivo. Para una salida elegí Egreso.';return;}
   if(type==='transfer'&&(!to||(to===account&&toOwn===owner))){err.textContent=(to&&to===account)?'Para pasar plata dentro de la misma cuenta elegí dos dueños distintos.':'Elegí dos cuentas distintas.';return;}
   if(!date){err.textContent='Elegí una fecha.';return;}
+  if(isClosed(date)||(m&&isClosed(m.date))){err.textContent='Ese mes está cerrado (rendido). Para modificarlo, reabrilo desde «Informe por dueño».';return;}
   let toCents=null;
   if(type==='transfer'&&curOf(account)!==curOf(to)){
     toCents=parseAmt($('#m-amt2').value);
@@ -65,6 +66,9 @@ function saveMov(){
   if(type!=='yield') data.owner=owner;
   if(type==='transfer'&&toOwn!==owner){ data.toOwner=toOwn; data.kind=($('#m-kind')&&$('#m-kind').value)||'gift'; }
   if(forMap) data.for=forMap;
+  if(type==='out'){ const cv=($('#m-cat')||{}).value; if(cv&&cv!=='sin'){ data.cat=cv; if(note&&S.modal.catTouched) learnRule(note,cv); } }
+  { const rf=($('#m-ref')||{}).value; if(rf&&rf.trim()) data.ref=rf.trim(); }
+  if(m&&m.fx) data.fx=m.fx;
   if(type==='in'){ const rp=$('#m-repay'); if(rp&&rp.value&&rp.value!==owner) data.repayFrom=rp.value; }
   if(m&&m.hold) data.hold=m.hold; keepRepay(m,data,type,owner,cents,date);
   if(m&&m.internal){ data.internal=true; if(m.opId) data.opId=m.opId; }
@@ -72,9 +76,10 @@ function saveMov(){
     if(m.base!=null) data.base=m.base; if(m.days!=null) data.days=m.days;
     if(m.split){ const w={}; for(const k in m.split) w[k]=Math.abs(m.split[k]); data.split=allocate(cents,w); }
   }
+  if(!m&&type!=='transfer'&&nq===1&&$('#m-fixed')&&$('#m-fixed').checked){ const fd=Object.assign({},data); delete fd.date; delete fd.createdAt; delete fd.ref; S.fixed.push({id:newId(),day:+date.slice(8,10),last:date.slice(0,7),data:fd}); }
   if(type!=='yield'){ S.lastOwner=owner; if(!m) prefSet({owner:owner,acc:account}); }
-  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,total:cents,data:pd}); applyPlans(); persist(); closeModal(); toast('Guardado · '+nq+' cuotas'); onData(); again(type,account); return; }
-  putMov(m?m.id:null,data); closeModal(); toast('Guardado'); again(type,account);
+  if(nq>1){ const pd=Object.assign({},data); delete pd.date; delete pd.createdAt; S.plans.push({id:newId(),n:nq,done:0,start:date,total:cents,data:pd}); applyPlans(); persist(); closeModal(); onData(); again(type,account); toast('Guardado · '+nq+' cuotas'); return; }
+  putMov(m?m.id:null,data); closeModal(); again(type,account); toast('Guardado');
 }
 function guardarIgual(){ const sb=$('#mform button.primary[type=submit]'); if(sb) sb.textContent='Guardar igual'; }
 /* «Guardar y otro»: vuelve a abrir el formulario con el mismo tipo y cuenta. */
@@ -85,6 +90,7 @@ function saveUpd(){
   if(!rows.length){err.textContent='Escribí el saldo actual de al menos una cuenta.';return;}
   if(rows.some(r=>isNaN(r.n))){err.textContent='Hay un monto que no se entiende.';return;}
   const todo=rows.filter(r=>r.diff!==0);
+  if(todo.some(r=>isClosed(r.date))){err.textContent='Hay una fecha en un mes cerrado. Reabrilo desde «Informe por dueño» o cambiá la fecha.';return;}
   if(!todo.length){err.textContent='Los saldos coinciden con lo anotado: no hay rendimiento para cargar.';return;}
   let tot=0;
   todo.forEach(r=>{
@@ -106,6 +112,10 @@ function saveAcc(){
   const ini={}; let initial=0, badI=false;
   $$('[data-ini]').forEach(i=>{ const raw=i.value.trim(); if(!raw) return; const v=parseAmt(raw); if(isNaN(v)) badI=true; else if(v){ ini[i.dataset.ini]=v; initial+=v; } });
   if(badI){err.textContent='Hay un saldo inicial que no se entiende.';return;}
+  if(S.closed.length){
+    const prev=a?(a.initialOwners||{yo:a.initial||0}):{}, ks=Array.from(new Set(Object.keys(prev).concat(Object.keys(ini))));
+    if(ks.some(k=>(prev[k]||0)!==(ini[k]||0))){err.textContent=a?'Hay meses cerrados: el saldo inicial (ni de quién es) se puede cambiar. Reabrí esos meses desde «Informe por dueño» primero.':'Hay meses cerrados: creá la cuenta con saldo 0 y anotá un ingreso con la fecha de hoy.';return;}
+  }
   const maxOrder=S.accounts.reduce((m,x)=>Math.max(m,x.order||0),0);
   const data={group:group||name,name:name,cur:$('#a-cur').value==='USD'?'USD':'ARS',yields:$('#a-yields').checked,initial:initial,initialOwners:ini,kind:($('#a-card')&&$('#a-card').checked)?'card':'',order:a?(a.order||0):Math.floor(maxOrder)+1,archived:a?$('#a-arch').checked:false};
   const id=a?a.id:slug((group||'')+'-'+name)+'-'+Math.random().toString(36).slice(2,6);
@@ -200,6 +210,7 @@ function importReview(){
     if(!M.cardAcc||!accById(M.cardAcc)){ err.textContent='Elegí en qué tarjeta anotar los consumos de otros (si no hay, creá una cuenta de tarjeta en Ajustes).'; return; }
   }
   let st=S.stmts.find(s=>s.card===M.card&&s.period===M.period);
+  if(M.rows.some(r=>r.inc&&r.own&&isClosed(r.date))||(st&&S.movs.some(m=>m.stmt===st.id&&isClosed(m.date)))){ err.textContent='Hay consumos de otros dueños en un mes cerrado. Reabrilo desde «Informe por dueño» para cargar este resumen.'; return; }
   if(st){ S.exp=S.exp.filter(e=>e.stmt!==st.id); S.movs=S.movs.filter(m=>m.stmt!==st.id); }
   else{ st={id:newId(),card:M.card,period:M.period,createdAt:Date.now()}; S.stmts.push(st); }
   st.paid=M.paid==='usd'?'usd':'pesos';

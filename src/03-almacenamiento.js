@@ -3,7 +3,7 @@ const KEY='mis-cuentas-v1', BK='mis-cuentas-copia';
 let storeOK=true;
 function persist(){
   try{
-    localStorage.setItem(KEY,JSON.stringify({v:5,accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans}));
+    localStorage.setItem(KEY,JSON.stringify({v:5,accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans,fixed:S.fixed,budgets:S.budgets,goals:S.goals,closed:S.closed,pc:1}));
     storeOK=true; return true;
   }catch(_){ storeOK=false; return false; }
 }
@@ -43,6 +43,8 @@ function normalizeData(d,fresh){
   o.cards=arr(d.cards).filter(x=>x&&str(x.id)&&str(x.name));
   o.cats=arr(d.cats).filter(x=>x&&str(x.id)&&str(x.name));
   if(!o.cats.length) o.cats=DEFAULT_CATS.map(x=>({id:x[0],name:x[1]}));
+  if(!d.pc) PARISH_CATS.forEach(c=>{ if(o.cats.some(x=>x.id===c[0]||String(x.name).toLowerCase()===c[1].toLowerCase())) return; const k=o.cats.findIndex(x=>x.id==='otros'||x.id==='sin'); o.cats.splice(k<0?o.cats.length:k,0,{id:c[0],name:c[1]}); });
+  o.pc=1;
   if(!o.cats.some(x=>x.id==='sin')) o.cats.push({id:'sin',name:'Sin categorizar'});
   o.rules=arr(d.rules).filter(x=>x&&str(x.k)&&str(x.cat));
   o.stmts=arr(d.stmts).filter(x=>x&&str(x.id)&&str(x.card)&&str(x.period));
@@ -50,6 +52,10 @@ function normalizeData(d,fresh){
   o.hlds=Array.isArray(d.hlds)?d.hlds.filter(x=>x&&str(x.id)&&str(x.name)).map(x=>Object.assign({initial:0,kind:'nom',cur:'USD',px:[]},x)):[];
   o.claims=arr(d.claims).filter(x=>x&&str(x.id)&&str(x.from)&&str(x.to)&&typeof x.cents==='number');
   o.plans=arr(d.plans).filter(x=>x&&str(x.id)&&str(x.start)&&x.data&&typeof x.n==='number'&&typeof x.done==='number'&&typeof x.data.cents==='number'&&str(x.data.account));
+  o.fixed=arr(d.fixed).filter(x=>x&&str(x.id)&&str(x.last)&&typeof x.day==='number'&&x.data&&typeof x.data.cents==='number'&&str(x.data.account));
+  o.budgets=arr(d.budgets).filter(x=>x&&str(x.id)&&str(x.cat)&&typeof x.cents==='number');
+  o.goals=arr(d.goals).filter(x=>x&&str(x.id)&&str(x.name)&&typeof x.target==='number');
+  o.closed=arr(d.closed).filter(str);
   o.loans=arr(d.loans).filter(x=>x&&str(x.id)&&str(x.owner)&&str(x.date)&&typeof x.cents==='number');
   o.ops=arr(d.ops).filter(x=>x&&str(x.id)&&str(x.hold)&&str(x.date)&&typeof x.qty==='number'&&(x.type==='buy'||x.type==='sell'));
   return o;
@@ -106,8 +112,9 @@ function autoBackupDue(){
   const l=lastBackup(); return !l||daysBetween(l,todayStr())>=AUTO_BK_DAYS;
 }
 function armAutoBackup(){
-  const go=()=>{ document.removeEventListener('pointerdown',go,true); if(!S.error&&autoBackupDue()) exportBackup('Copia automática descargada'); };
-  document.addEventListener('pointerdown',go,true);
+  /* Se dispara después del toque (no al apoyar el dedo): si se redibuja la pantalla entre el apoyo y el toque, se perdía el primer toque. */
+  const go=()=>{ document.removeEventListener('click',go,true); setTimeout(()=>{ if(!S.error&&autoBackupDue()) exportBackup('Copia automática descargada'); },0); };
+  document.addEventListener('click',go,true);
 }
 function backupBlock(){
   const l=lastBackup();
@@ -129,9 +136,9 @@ async function shareBackup(){
     toast('Copia enviada'); render();
   }catch(e){ if(e&&e.name!=='AbortError') toast('No se pudo enviar la copia'); }
 }
-function backupJson(){ return JSON.stringify({v:5,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans}); }
+function backupJson(){ return JSON.stringify({v:5,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans,fixed:S.fixed,budgets:S.budgets,goals:S.goals,closed:S.closed,pc:1}); }
 function exportBackup(msg){
-  const data=JSON.stringify({v:5,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans});
+  const data=JSON.stringify({v:5,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans,fixed:S.fixed,budgets:S.budgets,goals:S.goals,closed:S.closed,pc:1});
   const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
   const a=document.createElement('a'); a.href=url; a.download='mis-cuentas-'+todayStr()+'.json';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
@@ -154,6 +161,6 @@ function readImport(inp){
 }
 function impModal(d){
   const o=d.data;
-  return '<div class="sheet"><h2>Restaurar copia</h2><p class="hint">La copia tiene '+o.accounts.length+' cuentas, '+o.movs.length+' movimientos y '+o.exp.length+' consumos de tarjeta. Va a reemplazar todo lo que hay ahora en este celular ('+S.accounts.length+' cuentas, '+S.movs.length+' movimientos y '+S.exp.length+' consumos).</p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button><button type="button" class="btn danger" data-act="imp-yes">Reemplazar todo</button></div></div>';
+  return '<div class="sheet"><h2>Restaurar copia</h2><p class="hint">La copia tiene '+o.accounts.length+' cuentas, '+o.movs.length+' movimientos y '+o.exp.length+' consumos de tarjeta. Va a reemplazar todo lo que hay ahora en este celular ('+S.accounts.length+' cuentas, '+S.movs.length+' movimientos y '+S.exp.length+' consumos).</p>'+((S.closed||[]).length?'<p class="hint">Los meses cerrados ('+S.closed.map(monthLabel).join(', ')+') siguen cerrados, pero lo que hay adentro vuelve a como estaba en la copia.</p>':'')+'<div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button><button type="button" class="btn danger" data-act="imp-yes">Reemplazar todo</button></div></div>';
 }
 

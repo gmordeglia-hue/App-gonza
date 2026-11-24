@@ -90,7 +90,7 @@ function keepRepay(m,data,type,owner,cents,date){
 function viewResumen(){
   if(!S.accounts.length) return '<div class="empty"><h2>Todavía no hay cuentas</h2><p>Agregá la primera cuenta para empezar a llevar tus saldos.</p><button class="btn primary" data-act="acc-new">Agregar cuenta</button></div>';
   const accs=liveAccs(), arch=S.accounts.filter(a=>a.archived).sort(byOrder);
-  const fo=S.owners.some(o=>o.id===S.rOwner)?S.rOwner:'';
+  const fo=(S.owners.some(o=>o.id===S.rOwner)&&(S.movs.length||accs.some(a=>a.initial)))?S.rOwner:'';
   const obs=new Map(accs.map(a=>[a.id,ownerBalances(a)]));
   const val=a=>fo?((obs.get(a.id)||{})[fo]||0):balance(a);
   const isU=a=>a.cur==='USD';
@@ -105,8 +105,8 @@ function viewResumen(){
   const chips=S.owners.length>1?'<div class="chips" role="group" aria-label="De quién es la plata"><button class="chip" data-act="rown" data-id="" aria-pressed="'+(!fo)+'">Todo</button>'+S.owners.slice().sort((a,b)=>(b.id==='yo')-(a.id==='yo')).map(o=>'<button class="chip" data-act="rown" data-id="'+esc(o.id)+'" aria-pressed="'+(fo===o.id)+'">'+esc(o.name)+'</button>').join('')+'</div>':'';
   // avisos primero (sin recordatorios de actualizar saldos ni de cargar resúmenes: eso se hace a mano cuando uno quiere)
   let L='', X='';
-  if(!S.movs.length&&accs.every(a=>!a.initial)) L+='<div class="note"><strong>Primer paso:</strong> los botones de arriba (Gonza, Catequesis…) son los <em>dueños de la plata</em>: de quién es cada peso. Cargá lo que tenés hoy en cada cuenta. Tocá una cuenta y entrá a <em>Editar cuenta</em> para completar el saldo inicial. Después anotá cada movimiento con el botón <strong>+</strong> y usá <em>Actualizar saldos</em> para los rendimientos.</div>';
-  L+=(backupNote()||planReminder()||cardReminder());
+  if(!S.movs.length&&accs.every(a=>!a.initial)) L+='<div class="note"><strong>Para empezar, 3 pasos:</strong><ol class="steps"><li>Los botones de arriba (Gonza, Catequesis…) son los <em>dueños de la plata</em>: de quién es cada peso.</li><li>Cargá lo que tenés hoy en cada cuenta: tocá una cuenta (abajo, en <em>Tus cuentas</em>) y entrá a <em>Editar cuenta</em> para el saldo inicial.</li><li>Anotá cada movimiento con el botón <strong>+</strong>: escribilo en una línea, por ejemplo «super 15000 bbva».</li></ol></div>';
+  L+=(backupNote()||negNotice()||budgetNotice()||planReminder()||cardReminder());
   L+='<section class="total">'+chips+'<div class="eyebrow">Total en pesos</div><div class="big">'+amt(money(tot.ARS),tot.ARS<0?'neg':'')+'</div>';
   if(hasY) L+='<div class="stats"><div class="stat"><span class="small muted">Rendimiento hoy</span><b>'+amt(signed(yT.ARS),cls(yT.ARS))+'</b></div><div class="stat"><span class="small muted">Rendimiento del mes</span><b>'+amt(signed(yM.ARS),cls(yM.ARS))+'</b></div></div>';
   L+=owLine(ot.ARS,'ARS')+'</section>';
@@ -145,7 +145,7 @@ function viewResumen(){
     R+='</div>';
   }
   if(arch.length) R+='<details class="arch"><summary>Archivadas ('+arch.length+')</summary><div class="list-head">'+arch.map(a=>'<div class="acc"><div><div class="acc-name">'+esc(accLabel(a))+'</div></div><div class="acc-bal">'+amt(money(balance(a),a.cur),'muted')+'</div><div class="acc-actions"><button class="btn sm ghost" data-act="acc-edit" data-id="'+esc(a.id)+'">Editar</button></div></div>').join('')+'</div></details>';
-  return '<div class="home"><div>'+L+'</div><div>'+R+X+'</div></div>';
+  return '<div class="home"><div>'+L+'</div><div>'+R+monthCard(fo)+X+'</div></div>';
 }
 function ownerPanel(a,ob){
   const l=nonzeroOwners(ob); if(!l.length) return '';
@@ -195,10 +195,10 @@ function viewCuenta(){
 function viewMas(){
   const groups=[
     ['La plata que crece',[['rendimientos','Rendimientos','Cuánto rinde cada cuenta','rend'],['inversiones','Inversiones','Fondos y bonos que comprás y lo que cobrás de ellos','inv']]],
-    ['Gastos y deudas',[['tarjetas','Tarjetas','Resúmenes y en qué se va la plata','card'],['deudas','Deudas entre dueños','Quién le debe a quién y devoluciones','debt']]],
+    ['Gastos y deudas',[['tarjetas','Tarjetas','Resúmenes y en qué se va la plata','card'],['deudas','Deudas entre dueños','Quién le debe a quién y devoluciones','debt'],['informe','Informe por dueño','Cuánto entró, en qué se gastó y cuánto queda: para rendir cuentas','rep'],['metas','Presupuestos y metas','Topes por categoría y plata a juntar por proyecto','goal']]],
     ['Configuración',[['ajustes','Ajustes y seguridad','Cuentas, dueños, tarjetas, categorías, copias y bloqueo','gear']]]
   ];
-  const IC={debt:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg>',inv:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="5"/><path d="M13 13.5A5 5 0 1 0 19 19"/><path d="M9 7v4M7.5 9H11"/></svg>',rend:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',card:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>',gear:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>'};
+  const IC={rep:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7"/></svg>',goal:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>',debt:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg>',inv:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="5"/><path d="M13 13.5A5 5 0 1 0 19 19"/><path d="M9 7v4M7.5 9H11"/></svg>',rend:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',card:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>',gear:'<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>'};
   return '<div>'+groups.map(g=>'<div class="eyebrow mgrp-h">'+g[0]+'</div><div class="mlist">'+g[1].map(r=>'<a class="mrow" href="#'+r[0]+'">'+IC[r[3]]+'<span><b>'+r[1]+'</b><span class="small muted">'+r[2]+'</span></span>'+CHEV+'</a>').join('')+'</div>').join('')+'</div>';
 }
 
@@ -226,6 +226,8 @@ function movRow(m,run,noDate){
   let sub=(noDate?'':'<span class="mono">'+fmtDate(m.date)+'</span> · ')+esc(m.note?typeLabel(m.type)+' · '+where:where);
   if(m.type!=='yield'&&(m.owner||'yo')!=='yo'&&!xo) sub+=' · <span class="pill own">'+esc(ownerName(m.owner))+'</span>';
   if(a&&a.kind==='card'&&m.type==='out') sub+=' · <span class="pill own">Tarjeta</span>';
+  if(m.type==='out'&&m.cat) sub+=' · '+esc(catName(m.cat));
+  if(m.ref) sub+=' · comp. '+esc(m.ref);
   if(xo) sub+=' · <span class="pill own">'+esc(ownerName(m.owner||'yo'))+' → '+esc(ownerName(m.toOwner))+'</span>';
   if(m.type==='out'&&m.for) sub+=' · <span class="pill own">Para '+Object.keys(m.for).map(k=>esc(ownerName(k))).join(', ')+'</span>';
   if(m.type==='yield'){
@@ -253,14 +255,14 @@ function viewMovs(){
   let run=null;
   if(S.fAcc){ const a=accById(S.fAcc); if(a){ run=new Map(); let b=S.fOwner?(initOf(a)[S.fOwner]||0):(a.initial||0); for(const m of S.movs){ const e=S.fOwner?effectOwner(m,a.id,S.fOwner):effect(m,a.id); if(e!==0){ b+=e; run.set(m.id,b); } } } }
   const q=(S.fQ||'').trim().toLowerCase();
-  const hit=m=>{ if(!q) return true; const a=accById(m.account), b=m.to?accById(m.to):null; return (accLabel(a)+' '+(b?accLabel(b):'')+' '+(m.note||'')+' '+typeLabel(m.type)+' '+ownerName(m.owner||'yo')).toLowerCase().indexOf(q)>-1; };
+  const hit=m=>{ if(!q) return true; const a=accById(m.account), b=m.to?accById(m.to):null; return (accLabel(a)+' '+(b?accLabel(b):'')+' '+(m.note||'')+' '+typeLabel(m.type)+' '+ownerName(m.owner||'yo')+' '+(m.ref||'')+' '+(m.cat?catName(m.cat):'')).toLowerCase().indexOf(q)>-1; };
   const list=S.movs.filter(m=>(!S.fAcc||m.account===S.fAcc||m.to===S.fAcc)&&(!S.fType||m.type===S.fType)&&(!S.fMonth||m.date.startsWith(S.fMonth))&&(!S.fOwner||ownerHas(m,S.fOwner))&&hit(m)).reverse();
   let h='<input class="search" id="mq" type="search" placeholder="Buscar por detalle o cuenta" aria-label="Buscar movimientos" autocomplete="off" value="'+esc(S.fQ||'')+'">'
     +'<div class="chips" role="group" aria-label="Tipo de movimiento">'+[['','Todos'],['out','Egresos'],['in','Ingresos'],['transfer','Transferencias'],['yield','Rendimientos']].map(c=>'<button class="chip" data-act="ftype" data-id="'+c[0]+'" aria-pressed="'+(S.fType===c[0])+'">'+c[1]+'</button>').join('')+'</div>'
     +'<details class="more-f"'+((S.fAcc||S.fOwner||S.fMonth)?' open':'')+'><summary>Más filtros</summary><div class="filters">'
     +'<select data-filter="fAcc" aria-label="Filtrar por cuenta">'+opt('','Todas las cuentas',!S.fAcc)+accsAll.map(a=>opt(a.id,accLabel(a),S.fAcc===a.id)).join('')+'</select>'
     +'<select data-filter="fOwner" aria-label="Filtrar por dueño">'+opt('','Todos los dueños',!S.fOwner)+S.owners.map(o=>opt(o.id,o.name,S.fOwner===o.id)).join('')+'</select>'
-    +'<select data-filter="fMonth" aria-label="Filtrar por mes">'+opt('','Todos los meses',!S.fMonth)+months.map(mo=>opt(mo,monthLabel(mo),S.fMonth===mo)).join('')+'</select></div></details>'+plansBlock();
+    +'<select data-filter="fMonth" aria-label="Filtrar por mes">'+opt('','Todos los meses',!S.fMonth)+months.map(mo=>opt(mo,monthLabel(mo),S.fMonth===mo)).join('')+'</select></div></details>'+plansBlock()+fixedBlock();
   if(!S.movs.length) return h+'<div class="empty"><h2>Sin movimientos todavía</h2><p>Los ingresos, egresos, transferencias y rendimientos que cargues aparecen acá, del más nuevo al más viejo.</p><button class="btn primary" data-act="mov-new">Cargar el primero</button></div>';
   if(!list.length) return h+'<div class="note">No hay movimientos con estos filtros.</div>';
   let last='', open=false;
@@ -330,6 +332,7 @@ function viewAnalisis(){
   let h='<div class="filters"><select data-filter="aRange" aria-label="Período">'+opt('6','Últimos 6 meses',N===6)+opt('12','Últimos 12 meses',N===12)+'</select></div>';
   // ----- tarjetas por mes (se arma acá y se muestra después de las cuentas) -----
   const head=h; h='';
+  h+=catSpendBlock(fo);
   h+='<section><h2 class="sec">Tarjetas: gasto por mes</h2>';
   if(!S.exp.length) h+='<div class="note">Cuando cargues resúmenes de tarjeta, acá vas a ver cuánto gastás cada mes y en qué.</div>';
   else{
@@ -602,8 +605,8 @@ function viewHold(x){
   h+=(items.length||ini)?'<div class="list-head">'+items.map(i=>i.h).join('')+ini+'</div>':'<div class="note">Todavía no cargaste compras, ventas ni cobros.</div>';
   return h;
 }
-const TITLES={resumen:'Mis cuentas',movimientos:'Movimientos',rendimientos:'Rendimientos',tarjetas:'Tarjetas',analisis:'Análisis',ajustes:'Ajustes',mas:'Más',inversiones:'Inversiones',deudas:'Deudas entre dueños'};
-const SUBTABS=['rendimientos','inversiones','deudas','tarjetas','ajustes'];
+const TITLES={resumen:'Mis cuentas',movimientos:'Movimientos',rendimientos:'Rendimientos',tarjetas:'Tarjetas',analisis:'Análisis',ajustes:'Ajustes',mas:'Más',inversiones:'Inversiones',deudas:'Deudas entre dueños',informe:'Informe por dueño',metas:'Presupuestos'};
+const SUBTABS=['rendimientos','inversiones','deudas','tarjetas','ajustes','informe','metas'];
 function render(){
   document.body.classList.toggle('hide',S.hide);
   const hb=$('#hidebtn'); hb.setAttribute('aria-pressed',String(S.hide)); const hl=S.hide?'Mostrar montos':'Ocultar montos'; hb.title=hl; hb.setAttribute('aria-label',hl);
@@ -615,7 +618,7 @@ function render(){
   $$('[data-tab]').forEach(a=>{ const k=a.closest('#bnav')?key:S.tab; if(a.dataset.tab===k) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
   const v=$('#view');
   if(S.error) v.innerHTML='<div class="empty"><h2>No se pudo abrir tu libro</h2><p>'+esc(S.error)+'</p></div>';
-  else v.innerHTML=storeWarn()+(S.acc?viewCuenta():S.tab==='movimientos'?viewMovs():S.tab==='rendimientos'?viewRend():S.tab==='tarjetas'?viewTarj():S.tab==='analisis'?viewAnalisis():S.tab==='ajustes'?viewAjustes():S.tab==='mas'?viewMas():S.tab==='inversiones'?viewInv():S.tab==='deudas'?viewDeudas():viewResumen());
+  else v.innerHTML=storeWarn()+(S.acc?viewCuenta():S.tab==='movimientos'?viewMovs():S.tab==='rendimientos'?viewRend():S.tab==='tarjetas'?viewTarj():S.tab==='analisis'?viewAnalisis():S.tab==='ajustes'?viewAjustes():S.tab==='mas'?viewMas():S.tab==='inversiones'?viewInv():S.tab==='deudas'?viewDeudas():S.tab==='informe'?viewInforme():S.tab==='metas'?viewMetas():viewResumen());
   const q=$('#mq'); if(q&&S.qf){ q.focus(); try{q.setSelectionRange(q.value.length,q.value.length)}catch(_){} }
   S.qf=false;
 }

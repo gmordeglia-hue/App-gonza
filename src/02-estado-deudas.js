@@ -1,5 +1,5 @@
 /* ---------- Estado ---------- */
-const S={accounts:[],movs:[],owners:[],cards:[],cats:[],rules:[],stmts:[],exp:[],hlds:[],ops:[],loans:[],claims:[],plans:[],hd:'',selOp:'',confirmOp:'',
+const S={accounts:[],movs:[],owners:[],cards:[],cats:[],rules:[],stmts:[],exp:[],hlds:[],ops:[],loans:[],claims:[],plans:[],fixed:[],budgets:[],goals:[],closed:[],hd:'',selOp:'',confirmOp:'',
   error:'',tab:'resumen',fAcc:'',fType:'',fMonth:'',fOwner:'',limit:100,chartAcc:'',
   xPeriod:'',xCard:'',xCat:'',xLimit:100,modal:null,confirmDel:'',confirmX:'',confirmS:'',hide:false,lastOwner:(prefGet().owner||'yo'),
   acc:'',selMov:'',open:{},rOwner:'yo',fQ:'',qf:false};

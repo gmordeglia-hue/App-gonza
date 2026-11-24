@@ -3,7 +3,8 @@ document.addEventListener('click',e=>{
   if(e.target.matches&&e.target.matches('[data-overlay]')){ closeModal(); return; }
   const b=e.target.closest('[data-act]'); if(!b) return;
   const id=b.dataset.id, act=b.dataset.act;
-  if(act==='close') closeModal();
+  if(extraAct(act,id)){ /* pantallas de informe, metas y gastos fijos */ }
+  else if(act==='close') closeModal();
   else if(act==='hide'){ S.hide=!S.hide; try{localStorage.setItem('cuentas-hide',S.hide?'1':'0')}catch(_){} render(); }
   else if(act==='upd') openModal('upd',{accId:id});
   else if(act==='mov-new'){
@@ -43,7 +44,7 @@ document.addEventListener('click',e=>{
   else if(act==='op-sel'){ S.selOp=(S.selOp===id?'':id); S.confirmOp=''; render(); }
   else if(act==='op-del-ask'){ S.confirmOp=id; S.selOp=id; render(); }
   else if(act==='op-del-no'){ S.confirmOp=''; render(); }
-  else if(act==='op-del-yes'){ S.ops=S.ops.filter(y=>y.id!==id); S.movs=S.movs.filter(m=>m.opId!==id); S.confirmOp=''; S.selOp=''; persist(); render(); toast('Operación eliminada'); }
+  else if(act==='op-del-yes'){ { const op0=S.ops.find(y=>y.id===id); if(op0&&isClosed(op0.date)){ S.confirmOp=''; render(); toast('Esa operación es de un mes cerrado. Reabrilo desde «Informe por dueño».'); return; } } S.ops=S.ops.filter(y=>y.id!==id); S.movs=S.movs.filter(m=>m.opId!==id); S.confirmOp=''; S.selOp=''; persist(); render(); toast('Operación eliminada'); }
   else if(act==='cobro-new') openModal('cobro',{hold:b.dataset.hold||S.hd||''});
   else if(act==='back'){ navGo('mas'); }
   else if(act==='acc-open'){ S.acc=id; S.selMov=''; S.limit=100; render(); window.scrollTo(0,0); }
@@ -58,15 +59,15 @@ document.addEventListener('click',e=>{
   else if(act==='acc-del'){ const a=S.modal.a; if(a&&canDelAcc(a)){ S.accounts=S.accounts.filter(x=>x.id!==a.id); persist(); closeModal(); onData(); toast('Cuenta eliminada'); } }
   else if(act==='del-ask'){ S.confirmDel=id; S.selMov=id; render(); }
   else if(act==='del-no'){ S.confirmDel=''; render(); }
-  else if(act==='del-yes'){ S.confirmDel=''; S.selMov=''; delMov(id); toast('Movimiento eliminado'); }
+  else if(act==='del-yes'){ S.confirmDel=''; S.selMov=''; if(delMov(id)) toast('Movimiento eliminado'); else render(); }
   else if(act==='more'){ S.limit+=100; render(); }
   else if(act==='export') exportBackup();
   else if(act==='import'){ const f=$('#imp-file'); if(f) f.click(); }
-  else if(act==='imp-yes'){ applyData(S.modal.data); persist(); closeModal(); onData(); toast('Copia restaurada'); }
+  else if(act==='imp-yes'){ const cerr=(S.closed||[]).slice(); applyData(S.modal.data); S.closed=Array.from(new Set((S.closed||[]).concat(cerr))); persist(); closeModal(); onData(); toast('Copia restaurada'); }
   else if(act==='chart'){ S.chartAcc=id||''; render(); }
   else if(act==='owner-new') openModal('owner',{o:null});
   else if(act==='owner-edit') openModal('owner',{o:S.owners.find(x=>x.id===id)});
-  else if(act==='owner-del'){ const o=S.modal.o; S.owners=S.owners.filter(x=>x.id!==o.id); if(S.lastOwner===o.id) S.lastOwner='yo'; persist(); closeModal(); render(); toast('Dueño eliminado'); }
+  else if(act==='owner-del'){ const o=S.modal.o; if(S.movs.some(m=>ownerHas(m,o.id))||S.accounts.some(a=>Math.abs((ownerBalances(a)[o.id]||0))>0)||S.fixed.some(f=>f.data.owner===o.id||(f.data.for&&f.data.for[o.id]))||S.plans.some(p=>p.data.owner===o.id||(p.data.for&&p.data.for[o.id]))||S.budgets.some(b=>b.owner===o.id)||S.goals.some(g=>g.owner===o.id)){ toast('Ese dueño tiene movimientos, plata, gastos fijos, cuotas, presupuestos o metas: no se puede borrar.'); return; } S.owners=S.owners.filter(x=>x.id!==o.id); if(S.lastOwner===o.id) S.lastOwner='yo'; persist(); closeModal(); render(); toast('Dueño eliminado'); }
   else if(act==='card-new') openModal('card',{c:null});
   else if(act==='card-edit') openModal('card',{c:S.cards.find(x=>x.id===id)});
   else if(act==='cat-kw-add'||act==='cat-kw-del'){
@@ -88,8 +89,10 @@ document.addEventListener('click',e=>{
   else if(act==='cat-edit') openModal('cat',{c:S.cats.find(x=>x.id===id)});
   else if(act==='cat-del'){
     const c=S.modal.c;
+    if(S.movs.some(m=>m.cat===c.id&&isClosed(m.date))){ toast('Esa categoría se usó en meses cerrados: no se puede borrar.'); return; }
     if(!S.modal.confirmDel){ S.modal.confirmDel=true; b.textContent='Tocá otra vez para eliminar'; return; }
     S.exp.forEach(x=>{ if(x.cat===c.id) x.cat='sin'; });
+    S.movs.forEach(m=>{ if(m.cat===c.id) delete m.cat; }); S.budgets=S.budgets.filter(b=>b.cat!==c.id); S.fixed.forEach(f=>{ if(f.data.cat===c.id) delete f.data.cat; }); S.plans.forEach(p=>{ if(p.data.cat===c.id) delete p.data.cat; });
     S.cats=S.cats.filter(x=>x.id!==c.id); S.rules=S.rules.filter(r=>r.cat!==c.id);
     if(S.xCat===c.id) S.xCat='';
     persist(); closeModal(); render(); toast('Categoría eliminada');
@@ -114,7 +117,7 @@ document.addEventListener('submit',e=>{
   const f=e.target.id;
   if(f==='mform'){ S.again=!!(e.submitter&&e.submitter.dataset&&e.submitter.dataset.again); saveMov(); } else if(f==='uform') saveUpd(); else if(f==='aform') saveAcc();
   else if(f==='cform') saveCard(); else if(f==='kform') saveCat(); else if(f==='wform') saveOwner(); else if(f==='sform') stmtAnalyze(); else if(f==='pform') saveSMonth();
-  else if(f==='vform') savePx(); else if(f==='hform') saveHold(); else if(f==='oform') saveOp(); else if(f==='bform') saveCobro();
+  else if(f==='vform') savePx(); else if(f==='hform') saveHold(); else if(f==='oform') saveOp(); else if(f==='bform') saveCobro(); else if(f==='bgform') saveBudget(); else if(f==='fxform') saveFixed(); else if(f==='glform') saveGoal();
 });
 document.addEventListener('change',e=>{
   const t=e.target;
@@ -122,6 +125,7 @@ document.addEventListener('change',e=>{
   else if(t.dataset&&t.dataset.xcat){ setExpCat(t.dataset.xcat,t.value); }
   else if(t.dataset&&t.dataset.f){ reviewField(t); }
   else if(t.name==='mtype'||t.name==='mmode') toggleTo();
+  else if(t.id==='m-cat'){ if(S.modal) S.modal.catTouched=true; }
   else if(t.id==='m-to'){ if(S.modal) S.modal.toTouched=true; refreshMovForm(); }
   else if(t.id==='m-kind'){ if(S.modal) S.modal.kindTouched=true; refreshMovForm(); }
   else if(t.id==='m-acc'||t.id==='m-to'||t.id==='m-own'||t.id==='m-toown'||t.id==='m-for') refreshMovForm();
@@ -137,6 +141,7 @@ document.addEventListener('change',e=>{
 document.addEventListener('input',e=>{
   const t=e.target;
   if(t.id==='m-kind'&&S.modal) S.modal.kindTouched=true; /* si no, refreshMovForm pisa lo elegido antes de que llegue el «change» */
+  if(t.id==='m-note'&&S.modal&&!S.modal.catTouched&&!(S.modal.m&&S.modal.m.cat)){ const cc=$('#m-cat'); if(cc) cc.value=categorize(t.value); }
   if(t.id==='m-quick'){ if(S.modal){ S.modal.negOK=false; S.modal.repOK=false; S.modal.dupOK=false; } applyQuick(t.value); return; }
   if(t.id==='mq'){ S.fQ=t.value; S.limit=100; S.qf=true; render(); return; }
   if(t.closest&&t.closest('#uform')) updPreview();
@@ -148,7 +153,7 @@ document.addEventListener('keydown',e=>{
   /* Enter en la caja de una línea no guarda: baja el teclado y deja el foco en «Guardar». */
   if(e.key==='Enter'&&e.target&&e.target.id==='m-quick'){ e.preventDefault(); const sb=$('#mform button.primary[type=submit]'); if(sb) sb.focus(); }
 });
-const TABS=['resumen','movimientos','rendimientos','tarjetas','analisis','ajustes','mas','inversiones','deudas'];
+const TABS=['resumen','movimientos','rendimientos','tarjetas','analisis','ajustes','mas','inversiones','deudas','informe','metas'];
 function readHash(){ const h=navHash().replace('#',''); S.tab=TABS.indexOf(h)>-1?h:'resumen'; }
 window.addEventListener('hashchange',()=>{ readHash(); S.acc=''; S.hd=''; S.selMov=''; S.selOp=''; render(); window.scrollTo(0,0); });
 document.addEventListener('click',e=>{ const a=e.target.closest&&e.target.closest('a[data-tab]'); if(a&&(S.acc||S.hd)){ S.acc=''; S.hd=''; render(); } });
@@ -165,12 +170,12 @@ function init(){
   readHash();
   if(!loadStore()) return;
   S.xPeriod='';
-  applyPlans();
+  applyPlans(); applyFixed();
   onData();
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&applyPlans()) onData(); });
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&(applyPlans()|applyFixed())) onData(); });
   armAutoBackup();
   try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(_){}
 }
 /* Solo para las pruebas automáticas (tests/probar.py): se activa abriendo la app con ?test en la dirección. */
-if(location.search.indexOf('test')>-1) window.__T={S:S,debtPairs:debtPairs,balance:balance,accById:accById,persist:persist,onData:onData,render:render,todayStr:todayStr,openModal:openModal,stmtShowReview:stmtShowReview,cardReminder:cardReminder,cardAccFor:cardAccFor,applyPlans:applyPlans,ownerBalances:ownerBalances,normalizeData:normalizeData,backupJson:backupJson};
+if(location.search.indexOf('test')>-1) window.__T={S:S,extraAct:extraAct,delMov:delMov,categorize:categorize,informeData:informeData,applyFixed:applyFixed,budgetSpent:budgetSpent,isClosed:isClosed,monthSpend:monthSpend,debtPairs:debtPairs,balance:balance,accById:accById,persist:persist,onData:onData,render:render,todayStr:todayStr,openModal:openModal,stmtShowReview:stmtShowReview,cardReminder:cardReminder,cardAccFor:cardAccFor,applyPlans:applyPlans,ownerBalances:ownerBalances,normalizeData:normalizeData,backupJson:backupJson};
 init();

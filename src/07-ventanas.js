@@ -107,10 +107,14 @@ function movModal(m,pt,pa,pay){
   /* Lo básico va arriba; dueño, para quién, devolución y cuotas quedan en «Más opciones». */
   const isCardSel=!!(sel&&isCard(sel)), ownerOdd=!!(m&&((m.owner||'yo')!=='yo'||m.for||m.repayFrom||m.toOwner));
   const openMore=(!isY&&(ownerOdd||modeSel==='own'||(type==='out'&&isCardSel)||!!pay.repayFrom||!!pay.toOwner))?' open':'';
-  const moreBlock=isY?'':'<details id="m-more" class="more"'+openMore+'><summary id="m-more-s">Más opciones</summary>'+trBlock+forBlock+repBlock
+  const catVal=m?(m.cat||'sin'):(pay.cat||'sin');
+  const catBlock=isY?'':'<div id="cat-wrap" hidden><label for="m-cat">Categoría</label><select id="m-cat">'+S.cats.map(c=>opt(c.id,c.name,c.id===catVal)).join('')+'</select></div>';
+  const extraBlock=isY?'':'<label for="m-ref">N.º de comprobante o factura (opcional)</label><input id="m-ref" maxlength="40" autocomplete="off" value="'+esc(m&&m.ref?m.ref:'')+'">'+(m?'':'<div id="fx-wrap"><label class="chk"><input type="checkbox" id="m-fixed"><span id="fx-t">Se repite todos los meses (gasto fijo)</span></label></div>');
+  const moreBlock=isY?'':'<details id="m-more" class="more"'+openMore+'><summary id="m-more-s">Más opciones</summary>'+trBlock+forBlock+repBlock+extraBlock
 +'</details>';
   const quickBox=(m||Object.keys(pay).length)?'':'<div class="quick"><label for="m-quick">Escribilo en una línea</label><input id="m-quick" type="text" autocomplete="off" autocapitalize="none" enterkeyhint="done" placeholder="super 15000 bbva" data-focus><p class="hint">Escribí como hablás: qué fue, el monto y la cuenta. Ej.: farmacia 3500 efectivo.</p><p class="hint" id="m-quick-h" aria-live="polite"></p></div>';
-  return '<form id="mform" class="sheet" novalidate><h2>'+(m?(isY?'Editar rendimiento':'Editar movimiento'):'Nuevo movimiento')+'</h2>'+quickBox+seg+modeSeg
+  const modeHint=(isY||m)?'':'<p class="hint" id="mode-hint" hidden></p>';
+  return '<form id="mform" class="sheet" novalidate><h2>'+(m?(isY?'Editar rendimiento':'Editar movimiento'):'Nuevo movimiento')+'</h2>'+quickBox+seg+modeSeg+modeHint
     +'<label for="m-amt" id="m-amt-l">'+(isY?'Rendimiento (puede ser negativo)':'Monto')+'</label><input id="m-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+amtVal+'" data-focus>'
     +'<div id="amt2-wrap" hidden><label for="m-amt2" id="m-amt2-l">Monto que llega</label><input id="m-amt2" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(m&&m.toCents!=null?centsToInput(m.toCents):'')+'"><p class="hint" id="m-rate"></p></div>'
     +'<label for="m-acc" id="m-acc-l">Cuenta</label><select id="m-acc">'+accOptions(sel,m?[m.account]:[])+'</select>'
@@ -118,6 +122,7 @@ function movModal(m,pt,pa,pay){
     +own
     +(m?'':'<div id="cq-wrap" hidden><label for="m-cuotas">¿En cuántas cuotas? (dejá 1 si es un solo pago)</label><input id="m-cuotas" inputmode="numeric" autocomplete="off" placeholder="1" value="1"><p class="hint">Poné arriba el monto <strong>total</strong> de la compra. La app lo divide por las cuotas: cada mes se debita (y se anota como deuda) solo la cuota de ese mes. La primera es en la fecha que elijas.</p><p class="hint" id="cq-pre"></p></div>')
     +'<label for="m-note">Detalle (opcional)</label><input id="m-note" maxlength="120" autocomplete="off" value="'+esc(m?m.note:'')+'">'
+    +catBlock
     +'<label for="m-date">Fecha</label><input id="m-date" type="date" value="'+esc(m?m.date:todayStr())+'">'
     +moreBlock
     +'<p class="hint" id="m-hint"></p>'
@@ -141,6 +146,7 @@ function applyQuick(txt){
   set('#m-amt',r.cents!=null?centsToInput(r.cents):'');
   set('#m-date',r.date||todayStr());
   set('#m-note',r.note);
+  if(!S.modal.catTouched){ const cc=$('#m-cat'); if(cc) cc.value=categorize(r.note); }
   $$('#mform .filled').forEach(e=>e.classList.remove('filled'));
   const fill=id=>{ const e=$(id); if(e) e.classList.add('filled'); };
   if(r.acc) fill('#m-acc'); if(r.type==='transfer'&&r.to) fill('#m-to'); if(r.owner) fill('#m-own'); if(r.cents!=null) fill('#m-amt'); if(r.date) fill('#m-date'); if(r.note) fill('#m-note');
@@ -149,9 +155,10 @@ function applyQuick(txt){
   const a=r.acc&&accById(r.acc), b=r.to&&accById(r.to), cur=a?a.cur:'ARS';
   const bits=[T[r.type]];
   bits.push(r.cents!=null?money(r.cents,cur):'falta el monto');
-  bits.push(a?accLabel(a)+(b?' → '+accLabel(b):''):'elegí la cuenta');
+  bits.push(a?accLabel(a)+(b?' → '+accLabel(b):''):'cuenta: '+(($('#m-acc')||{}).selectedOptions&&$('#m-acc').selectedOptions[0]?$('#m-acc').selectedOptions[0].textContent:'?')+' (cambiala si no es esa)');
   if(r.owner) bits.push('plata de '+ownerName(r.owner));
   if(r.date&&r.date!==todayStr()) bits.push(fmtDate(r.date,true));
+  { const cc=$('#m-cat'); if(r.type==='out'&&cc&&cc.value!=='sin') bits.push('categoría '+catName(cc.value)); }
   if(r.note) bits.push('«'+r.note+'»');
   hint.textContent='✓ Entendí: '+bits.join(' · ')+'. Revisá y tocá Guardar.';
 }
@@ -160,11 +167,16 @@ function toggleTo(){
   const r=$('input[name=mtype]:checked'); const t=r?r.value:''; const tr=t==='transfer', byOwn=tr&&movMode()==='own';
   const w=$('#to-wrap'); if(!w) return; w.hidden=!tr;
   const mw=$('#mode-wrap'); if(mw) mw.hidden=!tr;
+  const mh0=$('#mode-hint'); if(mh0) mh0.hidden=!tr;
   const l=$('#m-acc-l'); if(l) l.textContent=byOwn?'Sale de la cuenta':tr?'Desde':'Cuenta';
   const tl=$('label[for=m-to]'); if(tl) tl.textContent=byOwn?'Entra en la cuenta (puede ser la misma)':'Hacia';
   const tw=$('#tr-wrap'); if(tw) tw.hidden=!byOwn;
   const mo=$('#m-more'); if(mo&&(byOwn||(t==='out'&&isCard(($('#m-acc')||{}).value)))) mo.open=true;
   const fw=$('#for-wrap'); if(fw) fw.hidden=t!=='out';
+  const cw2=$('#cat-wrap'); if(cw2) cw2.hidden=t!=='out';
+  const fxw=$('#fx-wrap'); if(fxw) fxw.hidden=tr;
+  const fxt=$('#fx-t'); if(fxt) fxt.textContent='Se repite todos los meses ('+(t==='in'?'ingreso':'gasto')+' fijo)';
+  const mh=$('#mode-hint'); if(mh) mh.textContent=byOwn?'Una plata que era de un dueño pasa a ser de otro (por ejemplo, Gonza le pasa $50.000 de su plata a la Catequesis).':'Pasás plata de una cuenta a otra, y sigue siendo del mismo dueño (por ejemplo, del banco al efectivo). No es ingreso ni gasto.';
   const rw=$('#rep-wrap'); if(rw) rw.hidden=t!=='in';
   const ol=$('#m-own-l'); if(ol) ol.textContent=byOwn?'De quién es la plata que sale':tr?'De quién es la plata':t==='in'?'De quién es la plata que entra':'Con plata de quién';
   // Entre dueños: si no se eligió otra cosa, la plata queda en la misma cuenta
@@ -446,6 +458,7 @@ function saveOp(){
   const owner=$('#o-own').value||'yo', rp=$('#o-px').value.trim(), price=rp?parseNum(rp):0, acc=$('#o-acc').value, x=holdById(hold);
   if(!x){ err.textContent='Elegí la tenencia.'; return; }
   if(isNaN(q)||q<=0){ err.textContent='Ingresá una cantidad mayor a cero.'; return; }
+  if(isClosed(date)||(o&&isClosed(o.date))){ err.textContent='Ese mes está cerrado. Para modificarlo, reabrilo desde «Informe por dueño».'; return; }
   if(isNaN(price)||price<0){ err.textContent='El valor por cuotaparte no se entiende.'; return; }
   if(!date){ err.textContent='Elegí una fecha.'; return; }
   if(acc){
@@ -472,6 +485,7 @@ function saveCobro(){
   if(!x){ err.textContent='Elegí la tenencia.'; return; }
   if(isNaN(cents)||cents<=0){ err.textContent='Ingresá un monto mayor a cero.'; return; }
   if(!acc){ err.textContent='Elegí la cuenta en dólares.'; return; }
+  if(isClosed(date)){ err.textContent='Ese mes está cerrado. Para modificarlo, reabrilo desde «Informe por dueño».'; return; }
   if(!date){ err.textContent='Elegí una fecha.'; return; }
   const data={type:'yield',account:acc,cents:cents,date:date,note:'Cobro · '+x.name+(note?' · '+note:''),hold:hold,createdAt:Date.now()};
   const w={}; S.owners.forEach(o=>{ const q=holdQtyOwner(x,o.id); if(q>0) w[o.id]=q; });
@@ -489,6 +503,9 @@ function modalBody(kind,data){
   switch(kind){
     case 'mov': return movModal(data.m,data.type,data.acc,data.pay);
     case 'claim': return claimModal();
+    case 'budget': return budgetModal(data.b);
+    case 'fixed': return fixedModal(data.f);
+    case 'goal': return goalModal(data.g);
     case 'px': return pxModal(data.hold);
     case 'menu': return menuModal();
     case 'hold': return holdModal(data.h);
@@ -514,5 +531,5 @@ function openModal(kind,data){
 }
 function closeModal(){ S.modal=null; $('#modal').innerHTML=''; }
 let toastT=null;
-function toast(t,ms){ const el=$('#toast'); el.textContent=t; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>{el.hidden=true},ms||2800); }
+function toast(t,ms){ const el=$('#toast'); el.classList.toggle('top',!!S.modal); el.textContent=t; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>{el.hidden=true},ms||2800); }
 
