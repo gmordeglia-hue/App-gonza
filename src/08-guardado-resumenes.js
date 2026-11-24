@@ -33,6 +33,8 @@ function saveMov(){
     if(forMap){ const ks=Object.keys(forMap); if(ks.length===1&&ks[0]===owner) forMap=null; }
   }
   if(type==='in'&&m&&m.repayFrom&&!$('#m-repay')){ /* se conserva */ }
+  /* Aviso de duplicado: mismo tipo, cuenta, monto, dueño y fecha que algo ya cargado. */
+  if(!m&&type!=='yield'&&!S.modal.dupOK&&S.movs.some(x=>x.date===date&&x.type===type&&x.account===account&&x.cents===cents&&(x.owner||'yo')===owner&&(type!=='transfer'||x.to===to))){ S.modal.dupOK=true; guardarIgual(); err.textContent='Ya hay cargado algo igual en esa fecha (mismo monto y cuenta). Si es otro, tocá «Guardar igual».'; return; }
   if((type==='out'||type==='transfer')&&!S.modal.negOK){
     const acc=accById(account), ob=acc?ownerBalances(acc):{};
     /* Si la cuenta todavía no tiene nada cargado (saldo inicial 0 y sin movimientos), no hay saldo real contra qué comparar: no avisa. */

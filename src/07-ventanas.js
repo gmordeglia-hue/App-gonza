@@ -98,29 +98,30 @@ function movModal(m,pt,pa,pay){
   const modeSel=(m?(m.toOwner&&m.toOwner!==(m.owner||'yo')):(pay.mode==='own'||!!(pay.toOwner&&pay.toOwner!==ownSel)))?'own':'acc';
   const modeSeg=isY?'':'<fieldset class="seg" id="mode-wrap" hidden><legend class="muted" style="position:absolute;left:-9999px">Qué se pasa</legend>'
     +[['acc','Entre cuentas'],['own','Entre dueños']].map(t=>'<label><input type="radio" name="mmode" value="'+t[0]+'"'+(modeSel===t[0]?' checked':'')+'><span>'+t[1]+'</span></label>').join('')+'</fieldset>';
-  const own=isY?'':'<label for="m-own" id="m-own-l">Con plata de quién</label><select id="m-own">'+ownOpts(ownSel)+'</select>';
+  const own=isY?'':'<label for="m-own" id="m-own-l">Con plata de quién</label><select id="m-own"'+(ownSel!=='yo'?' class="odd"':'')+'>'+ownOpts(ownSel)+'</select><p class="hint">De quién es la plata que se usa: tuya, de la Catequesis, etc. Se acuerda del último que usaste.</p>';
   const trBlock=isY?'':'<div id="tr-wrap" hidden><label for="m-toown">Pasa a ser plata de</label><select id="m-toown">'+ownOpts(toOwnSel)+'</select>'
     +'<div id="kind-wrap" hidden><label for="m-kind">¿Qué significa?</label><select id="m-kind">'+opt('repay','Devolución de una deuda',kindSel==='repay')+opt('loan','Préstamo (me lo tiene que devolver)',kindSel==='loan')+opt('gift','Aporte, sin deuda',kindSel==='gift')+'</select></div></div>';
-  const forBlock=isY?'':'<div id="for-wrap" hidden><label for="m-for">¿Para quién es el gasto?</label><select id="m-for">'+opt('','Para el mismo dueño de la plata',!forSel)+S.owners.map(o=>opt(o.id,o.name,forSel===o.id)).join('')+opt('__multi','Repartir entre varios…',forSel==='__multi')+'</select>'
+  const forBlock=isY?'':'<div id="for-wrap" hidden><label for="m-for">¿Para quién es el gasto?</label><select id="m-for">'+opt('','Para el mismo dueño de la plata',!forSel)+S.owners.map(o=>opt(o.id,o.name,forSel===o.id)).join('')+opt('__multi','Repartir entre varios…',forSel==='__multi')+'</select><p class="hint">Si pagaste algo de otro dueño (por ejemplo, de la Catequesis) con tu plata, elegilo acá: queda anotado como deuda.</p>'
     +'<div id="for-multi" hidden>'+S.owners.map(o=>'<label class="fo-row"><span>'+esc(o.name)+'</span><input data-fo="'+esc(o.id)+'" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(fm&&fm[o.id]?centsToInput(fm[o.id]):'')+'"></label>').join('')+'</div></div>';
   const repBlock=isY?'':'<div id="rep-wrap" hidden><label for="m-repay">¿Es una devolución de una deuda?</label><select id="m-repay">'+opt('','No, es plata que entra',!repSel)+S.owners.map(o=>opt(o.id,'Sí, me la devuelve '+o.name,repSel===o.id)).join('')+'</select></div>';
   /* Lo básico va arriba; dueño, para quién, devolución y cuotas quedan en «Más opciones». */
   const isCardSel=!!(sel&&isCard(sel)), ownerOdd=!!(m&&((m.owner||'yo')!=='yo'||m.for||m.repayFrom||m.toOwner));
-  const openMore=(!isY&&(ownerOdd||(!m&&ownSel!=='yo')||modeSel==='own'||(type==='out'&&isCardSel)||!!pay.repayFrom||!!pay.toOwner))?' open':'';
-  const moreBlock=isY?'':'<details id="m-more" class="more"'+openMore+'><summary id="m-more-s">Más opciones</summary>'+own+trBlock+forBlock+repBlock
+  const openMore=(!isY&&(ownerOdd||modeSel==='own'||(type==='out'&&isCardSel)||!!pay.repayFrom||!!pay.toOwner))?' open':'';
+  const moreBlock=isY?'':'<details id="m-more" class="more"'+openMore+'><summary id="m-more-s">Más opciones</summary>'+trBlock+forBlock+repBlock
 +'</details>';
-  const quickBox=(m||Object.keys(pay).length)?'':'<div class="quick"><label for="m-quick">Escribilo en una línea</label><input id="m-quick" type="text" autocomplete="off" autocapitalize="none" enterkeyhint="done" placeholder="super 15000 bbva" data-focus><p class="hint" id="m-quick-h" aria-live="polite"></p></div>';
+  const quickBox=(m||Object.keys(pay).length)?'':'<div class="quick"><label for="m-quick">Escribilo en una línea</label><input id="m-quick" type="text" autocomplete="off" autocapitalize="none" enterkeyhint="done" placeholder="super 15000 bbva" data-focus><p class="hint">Escribí como hablás: qué fue, el monto y la cuenta. Ej.: farmacia 3500 efectivo.</p><p class="hint" id="m-quick-h" aria-live="polite"></p></div>';
   return '<form id="mform" class="sheet" novalidate><h2>'+(m?(isY?'Editar rendimiento':'Editar movimiento'):'Nuevo movimiento')+'</h2>'+quickBox+seg+modeSeg
     +'<label for="m-amt" id="m-amt-l">'+(isY?'Rendimiento (puede ser negativo)':'Monto')+'</label><input id="m-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+amtVal+'" data-focus>'
     +'<div id="amt2-wrap" hidden><label for="m-amt2" id="m-amt2-l">Monto que llega</label><input id="m-amt2" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(m&&m.toCents!=null?centsToInput(m.toCents):'')+'"><p class="hint" id="m-rate"></p></div>'
     +'<label for="m-acc" id="m-acc-l">Cuenta</label><select id="m-acc">'+accOptions(sel,m?[m.account]:[])+'</select>'
     +'<div id="to-wrap" hidden><label for="m-to">Hacia</label><select id="m-to">'+accOptions(toSel,m&&m.to?[m.to]:[])+'</select></div>'
+    +own
     +(m?'':'<div id="cq-wrap" hidden><label for="m-cuotas">¿En cuántas cuotas? (dejá 1 si es un solo pago)</label><input id="m-cuotas" inputmode="numeric" autocomplete="off" placeholder="1" value="1"><p class="hint">Poné arriba el monto <strong>total</strong> de la compra. La app lo divide por las cuotas: cada mes se debita (y se anota como deuda) solo la cuota de ese mes. La primera es en la fecha que elijas.</p><p class="hint" id="cq-pre"></p></div>')
     +'<label for="m-note">Detalle (opcional)</label><input id="m-note" maxlength="120" autocomplete="off" value="'+esc(m?m.note:'')+'">'
     +'<label for="m-date">Fecha</label><input id="m-date" type="date" value="'+esc(m?m.date:todayStr())+'">'
     +moreBlock
     +'<p class="hint" id="m-hint"></p>'
-    +'<p class="err" id="m-err" role="alert"></p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button>'+(m?'':'<button type="submit" class="btn" data-again="1">Guardar y otro</button>')+'<button type="submit" class="btn primary">Guardar</button></div></form>';
+    +'<p class="err" id="m-err" role="alert"></p><div class="sheet-actions"><button type="button" class="btn ghost" data-act="close">Cancelar</button>'+(m?'':'<button type="submit" class="btn" data-again="1">Guardar y otro</button>')+'<button type="submit" class="btn primary">Guardar</button></div></form>';
 }
 /* Caja de una línea: interpreta la frase (rapido.js) y completa el formulario. Nunca guarda: confirmás con «Guardar». */
 function applyQuick(txt){
@@ -140,6 +141,9 @@ function applyQuick(txt){
   set('#m-amt',r.cents!=null?centsToInput(r.cents):'');
   set('#m-date',r.date||todayStr());
   set('#m-note',r.note);
+  $$('#mform .filled').forEach(e=>e.classList.remove('filled'));
+  const fill=id=>{ const e=$(id); if(e) e.classList.add('filled'); };
+  if(r.acc) fill('#m-acc'); if(r.type==='transfer'&&r.to) fill('#m-to'); if(r.owner) fill('#m-own'); if(r.cents!=null) fill('#m-amt'); if(r.date) fill('#m-date'); if(r.note) fill('#m-note');
   toggleTo();
   const T={out:'Egreso',in:'Ingreso',transfer:'Transferencia'};
   const a=r.acc&&accById(r.acc), b=r.to&&accById(r.to), cur=a?a.cur:'ARS';
@@ -149,7 +153,7 @@ function applyQuick(txt){
   if(r.owner) bits.push('plata de '+ownerName(r.owner));
   if(r.date&&r.date!==todayStr()) bits.push(fmtDate(r.date,true));
   if(r.note) bits.push('«'+r.note+'»');
-  hint.textContent='Entendí: '+bits.join(' · ')+'. Revisá y tocá Guardar.';
+  hint.textContent='✓ Entendí: '+bits.join(' · ')+'. Revisá y tocá Guardar.';
 }
 const movMode=()=>{ const r=$('input[name=mmode]:checked'); return r?r.value:'acc'; };
 function toggleTo(){
@@ -180,6 +184,7 @@ function refreshMovForm(){
   if(cross){ $('#m-amt2-l').textContent='Monto que llega'+(ct==='USD'?' (US$)':' ($)'); updRate(); }
   const hint=$('#m-hint'); if(!hint) return;
   const own=$('#m-own'), ov=own?own.value:'yo', amtC=parseAmt($('#m-amt').value);
+  if(own) own.classList.toggle('odd',own.value!=='yo');
   let ht='', due=0;
   if(tr){
     const byOwn=movMode()==='own', tw=$('#m-toown'), tv=(byOwn&&tw)?tw.value:ov, diff=tv!==ov, kw=$('#kind-wrap'); if(kw) kw.hidden=!diff;

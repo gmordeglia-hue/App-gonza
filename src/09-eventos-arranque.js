@@ -137,11 +137,11 @@ document.addEventListener('change',e=>{
 document.addEventListener('input',e=>{
   const t=e.target;
   if(t.id==='m-kind'&&S.modal) S.modal.kindTouched=true; /* si no, refreshMovForm pisa lo elegido antes de que llegue el «change» */
-  if(t.id==='m-quick'){ if(S.modal){ S.modal.negOK=false; S.modal.repOK=false; } applyQuick(t.value); return; }
+  if(t.id==='m-quick'){ if(S.modal){ S.modal.negOK=false; S.modal.repOK=false; S.modal.dupOK=false; } applyQuick(t.value); return; }
   if(t.id==='mq'){ S.fQ=t.value; S.limit=100; S.qf=true; render(); return; }
   if(t.closest&&t.closest('#uform')) updPreview();
   else if(t.dataset&&t.dataset.f) reviewField(t);
-  else if(t.closest&&t.closest('#mform,#oform')&&S.modal){ S.modal.negOK=false; S.modal.repOK=false; if(t.id==='m-amt'||t.id==='m-amt2') updRate(); if(t.closest('#mform')) refreshMovForm(); if(t.closest('#oform')) updOpTotal(); }
+  else if(t.closest&&t.closest('#mform,#oform')&&S.modal){ S.modal.negOK=false; S.modal.repOK=false; S.modal.dupOK=false; if(t.id==='m-amt'||t.id==='m-amt2') updRate(); if(t.closest('#mform')) refreshMovForm(); if(t.closest('#oform')) updOpTotal(); }
 });
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&S.modal) closeModal();

@@ -102,13 +102,11 @@ function viewResumen(){
   for(const m of S.movs){ const c=curId[m.account]; if(m.type==='yield'&&c){ const v=ownerShare(m,who); if(m.date.startsWith(mp)) yM[c]+=v; if(m.date===today) yT[c]+=v; } }
   const nonz=o=>nonzeroOwners(o);
   const owLine=(o,c)=>{const l=nonz(o); return (!fo&&(l.length>=2||(l.length===1&&l[0].id!=='yo')))?'<div class="total-sub owners">'+l.map(x=>'<span>'+esc(x.name)+' '+amt(money(x.v,c),x.v<0?'neg':'')+'</span>').join('')+'</div>':'';};
-  const chips=S.owners.length>1?'<div class="chips" role="group" aria-label="De quién es la plata">'+S.owners.slice().sort((a,b)=>(b.id==='yo')-(a.id==='yo')).map(o=>'<button class="chip" data-act="rown" data-id="'+esc(o.id)+'" aria-pressed="'+(fo===o.id)+'">'+esc(o.name)+'</button>').join('')+'<button class="chip" data-act="rown" data-id="" aria-pressed="'+(!fo)+'">Todo</button></div>':'';
+  const chips=S.owners.length>1?'<div class="chips" role="group" aria-label="De quién es la plata"><button class="chip" data-act="rown" data-id="" aria-pressed="'+(!fo)+'">Todo</button>'+S.owners.slice().sort((a,b)=>(b.id==='yo')-(a.id==='yo')).map(o=>'<button class="chip" data-act="rown" data-id="'+esc(o.id)+'" aria-pressed="'+(fo===o.id)+'">'+esc(o.name)+'</button>').join('')+'</div>':'';
   // avisos primero (sin recordatorios de actualizar saldos ni de cargar resúmenes: eso se hace a mano cuando uno quiere)
-  let L='';
-  if(!S.movs.length&&accs.every(a=>!a.initial)) L+='<div class="note"><strong>Primer paso:</strong> cargá lo que tenés hoy en cada cuenta. Tocá una cuenta y entrá a <em>Editar cuenta</em> para completar el saldo inicial. Después anotá cada movimiento con el botón <strong>+</strong> y usá <em>Actualizar saldos</em> para los rendimientos.</div>';
-  L+=backupNote();
-  L+=planReminder();
-  L+=cardReminder();
+  let L='', X='';
+  if(!S.movs.length&&accs.every(a=>!a.initial)) L+='<div class="note"><strong>Primer paso:</strong> los botones de arriba (Gonza, Catequesis…) son los <em>dueños de la plata</em>: de quién es cada peso. Cargá lo que tenés hoy en cada cuenta. Tocá una cuenta y entrá a <em>Editar cuenta</em> para completar el saldo inicial. Después anotá cada movimiento con el botón <strong>+</strong> y usá <em>Actualizar saldos</em> para los rendimientos.</div>';
+  L+=(backupNote()||planReminder()||cardReminder());
   L+='<section class="total">'+chips+'<div class="eyebrow">Total en pesos</div><div class="big">'+amt(money(tot.ARS),tot.ARS<0?'neg':'')+'</div>';
   if(hasY) L+='<div class="stats"><div class="stat"><span class="small muted">Rendimiento hoy</span><b>'+amt(signed(yT.ARS),cls(yT.ARS))+'</b></div><div class="stat"><span class="small muted">Rendimiento del mes</span><b>'+amt(signed(yM.ARS),cls(yM.ARS))+'</b></div></div>';
   L+=owLine(ot.ARS,'ARS')+'</section>';
@@ -118,11 +116,11 @@ function viewResumen(){
   }
   {
     const DP=debtPairs().filter(p=>!fo||p.debtor===fo||p.creditor===fo);
-    if(DP.length) L+='<section class="note"><strong>Deudas entre dueños</strong>'+DP.slice(0,3).map(p=>'<div>'+esc(ownerName(p.debtor))+' le debe '+amt(money(p.cents,p.c))+' a '+esc(ownerName(p.creditor))+'</div>').join('')+'<a class="link" href="#deudas">Ver y devolver</a></section>';
+    if(DP.length) X+='<section class="note"><strong>Deudas entre dueños</strong>'+DP.slice(0,3).map(p=>'<div>'+esc(ownerName(p.debtor))+' le debe '+amt(money(p.cents,p.c))+' a '+esc(ownerName(p.creditor))+'</div>').join('')+'<a class="link" href="#deudas">Ver y devolver</a></section>';
   }
   {
     const IT=invTotals(fo);
-    if(IT.ARS||IT.USD) L+='<section class="usd-card"><div class="eyebrow">Cuotapartes (Balanz y otros fondos)</div><div class="usd-fig">'+amt(money(IT.ARS))+'</div>'+(IT.USD?'<div class="total-sub"><span>'+amt(money(IT.USD,'USD'))+'</span></div>':'')+'<div class="total-sub"><a class="link" href="#inversiones">Ver inversiones</a></div></section>';
+    if(IT.ARS||IT.USD) X+='<section class="usd-card"><div class="eyebrow">Cuotapartes (Balanz y otros fondos)</div><div class="usd-fig">'+amt(money(IT.ARS))+'</div>'+(IT.USD?'<div class="total-sub"><span>'+amt(money(IT.USD,'USD'))+'</span></div>':'')+'<div class="total-sub"><a class="link" href="#inversiones">Ver inversiones</a></div></section>';
   }
   // cuentas por entidad
   const gm=new Map();
@@ -147,7 +145,7 @@ function viewResumen(){
     R+='</div>';
   }
   if(arch.length) R+='<details class="arch"><summary>Archivadas ('+arch.length+')</summary><div class="list-head">'+arch.map(a=>'<div class="acc"><div><div class="acc-name">'+esc(accLabel(a))+'</div></div><div class="acc-bal">'+amt(money(balance(a),a.cur),'muted')+'</div><div class="acc-actions"><button class="btn sm ghost" data-act="acc-edit" data-id="'+esc(a.id)+'">Editar</button></div></div>').join('')+'</div></details>';
-  return '<div class="home"><div>'+L+'</div><div>'+R+'</div></div>';
+  return '<div class="home"><div>'+L+'</div><div>'+R+X+'</div></div>';
 }
 function ownerPanel(a,ob){
   const l=nonzeroOwners(ob); if(!l.length) return '';
@@ -196,7 +194,7 @@ function viewCuenta(){
 }
 function viewMas(){
   const groups=[
-    ['La plata que crece',[['rendimientos','Rendimientos','Cuánto rinde cada cuenta','rend'],['inversiones','Inversiones','Cuotapartes de Balanz, nominales y cobros','inv']]],
+    ['La plata que crece',[['rendimientos','Rendimientos','Cuánto rinde cada cuenta','rend'],['inversiones','Inversiones','Fondos y bonos que comprás y lo que cobrás de ellos','inv']]],
     ['Gastos y deudas',[['tarjetas','Tarjetas','Resúmenes y en qué se va la plata','card'],['deudas','Deudas entre dueños','Quién le debe a quién y devoluciones','debt']]],
     ['Configuración',[['ajustes','Ajustes y seguridad','Cuentas, dueños, tarjetas, categorías, copias y bloqueo','gear']]]
   ];
@@ -227,6 +225,7 @@ function movRow(m,run,noDate){
   }
   let sub=(noDate?'':'<span class="mono">'+fmtDate(m.date)+'</span> · ')+esc(m.note?typeLabel(m.type)+' · '+where:where);
   if(m.type!=='yield'&&(m.owner||'yo')!=='yo'&&!xo) sub+=' · <span class="pill own">'+esc(ownerName(m.owner))+'</span>';
+  if(a&&a.kind==='card'&&m.type==='out') sub+=' · <span class="pill own">Tarjeta</span>';
   if(xo) sub+=' · <span class="pill own">'+esc(ownerName(m.owner||'yo'))+' → '+esc(ownerName(m.toOwner))+'</span>';
   if(m.type==='out'&&m.for) sub+=' · <span class="pill own">Para '+Object.keys(m.for).map(k=>esc(ownerName(k))).join(', ')+'</span>';
   if(m.type==='yield'){
@@ -384,11 +383,11 @@ function viewAjustes(){
   let h='<p class="muted" style="font-size:14px;margin:0 0 4px">Lo que se toca de vez en cuando: cuentas, dueños, tarjetas, categorías y la copia de seguridad (al final).</p><section><h2 class="sec">Cuentas</h2>';
   gm.forEach((list,g)=>{
     h+='<div class="grp"><div class="grp-h"><span class="eyebrow">'+esc(g)+'</span></div>'
-      +list.map(a=>'<div class="acc"><div><div class="acc-name">'+esc(a.name)+(a.cur==='USD'&&!/US\$|dólar/i.test(a.name)?' (US$)':'')+'</div>'+(a.archived?'<div class="acc-meta"><span>Archivada</span></div>':'')+'</div><div class="acc-actions"><button class="btn sm ghost" data-act="acc-edit" data-id="'+esc(a.id)+'">Editar</button></div></div>').join('')
+      +list.map(a=>'<div class="acc acc-row"><div><div class="acc-name">'+esc(a.name)+(a.cur==='USD'&&!/US\$|dólar/i.test(a.name)?' (US$)':'')+'</div>'+(a.archived?'<div class="acc-meta"><span>Archivada</span></div>':'')+'</div><div class="acc-actions"><button class="btn sm ghost" data-act="acc-edit" data-id="'+esc(a.id)+'">Editar</button></div></div>').join('')
       +'<div class="grp-add"><button class="link" data-act="acc-new" data-group="'+esc(g)+'">+ Agregar fondo, reserva u otra cuenta en '+esc(g)+'</button><button class="link" data-act="acc-new" data-group="'+esc(g)+'" data-cur="USD">+ Agregar cuenta en dólares en '+esc(g)+'</button></div></div>';
   });
   h+='<div style="margin-top:10px"><button class="btn" data-act="acc-new">Nueva cuenta, banco o billetera</button></div></section>';
-  h+='<section><h2 class="sec">Dueños de la plata</h2><div class="list-head">'+S.owners.map(o=>'<div class="acc"><div><div class="acc-name">'+esc(o.name)+'</div></div><div class="acc-actions"><button class="btn sm ghost" data-act="owner-edit" data-id="'+esc(o.id)+'">Editar</button></div></div>').join('')+'</div><div style="margin-top:10px"><button class="btn ghost" data-act="owner-new">Agregar dueño</button></div></section>';
+  h+='<section><h2 class="sec">Dueños de la plata</h2><div class="list-head">'+S.owners.map(o=>'<div class="acc acc-row"><div><div class="acc-name">'+esc(o.name)+'</div></div><div class="acc-actions"><button class="btn sm ghost" data-act="owner-edit" data-id="'+esc(o.id)+'">Editar</button></div></div>').join('')+'</div><div style="margin-top:10px"><button class="btn ghost" data-act="owner-new">Agregar dueño</button></div></section>';
   h+=cardsCatsBlock()+backupBlock()+(window.lockBlock?window.lockBlock():'');
   return h;
 }
@@ -428,7 +427,7 @@ function viewRend(){
 /* ----- Tarjetas ----- */
 function cardsCatsBlock(){
   let h='<section><h2 class="sec">Mis tarjetas</h2><div class="list-head">'
-    +S.cards.map(c=>'<div class="acc"><div><div class="acc-name">'+esc(c.name)+'</div></div><div class="acc-actions" style="margin:0"><button class="btn sm ghost" data-act="card-edit" data-id="'+esc(c.id)+'">Editar</button></div></div>').join('')
+    +S.cards.map(c=>'<div class="acc acc-row"><div><div class="acc-name">'+esc(c.name)+'</div></div><div class="acc-actions" style="margin:0"><button class="btn sm ghost" data-act="card-edit" data-id="'+esc(c.id)+'">Editar</button></div></div>').join('')
     +'</div><div style="margin-top:10px"><button class="btn ghost" data-act="card-new">Agregar tarjeta</button></div></section>';
   h+='<section><h2 class="sec">Categorías</h2><div class="chips">'+S.cats.map(c=>'<button class="chip" data-act="cat-edit" data-id="'+esc(c.id)+'" aria-pressed="false">'+esc(c.name)+'</button>').join('')+'</div>'
     +'<div style="margin-top:10px"><button class="btn ghost" data-act="cat-new">Agregar categoría</button></div>'
@@ -449,7 +448,7 @@ function mgmtBlock(){
   return h;
 }
 function viewTarj(){
-  if(!S.cards.length) return '<div class="empty"><h2>Cargá tus tarjetas</h2><p>Agregá tus tarjetas de crédito y subí los resúmenes para ver en qué se va la plata.</p><button class="btn primary" data-act="card-new">Agregar tarjeta</button></div>';
+  if(!S.cards.length) return '<div class="empty"><h2>Cargá tus tarjetas</h2><p>Agregá tus tarjetas de crédito y subí los resúmenes para ver en qué se va la plata.</p><p class="hint">Los consumos con tarjeta se cargan subiendo el resumen del mes (el PDF), o a mano como egreso desde la cuenta «Tarjeta de crédito».</p><button class="btn primary" data-act="card-new">Agregar tarjeta</button></div>';
   let h='<div class="actions"><button class="btn primary" data-act="stmt-new">Cargar resumen</button><a class="btn ghost" href="#ajustes" style="text-decoration:none;display:inline-flex;align-items:center">Editar tarjetas y categorías</a></div>';
   if(!S.exp.length) return h+'<div class="note">Todavía no cargaste ningún resumen. Tocá <strong>Cargar resumen</strong>, pegá el texto del PDF y revisá los consumos.</div>'+mgmtBlock();
   const periods=Array.from(new Set(S.exp.map(e=>e.period))).sort().reverse();

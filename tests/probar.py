@@ -124,6 +124,21 @@ def main():
             ev("()=>__T.openModal('mov',{m:null,type:'',acc:'',pay:null})")
             chequear('el próximo movimiento arranca con la última cuenta', ev("()=>document.querySelector('#m-acc').value")=='efectivo')
 
+            print('Tanda 1: dueño visible y duplicados')
+            chequear('el dueño se ve sin abrir «Más opciones»', ev("()=>{const o=document.querySelector('#m-own');return !!o&&!o.closest('details')}"))
+            n0 = ev("()=>__T.S.movs.length")
+            pg.fill('#m-quick', 'super 15000 efectivo')
+            pg.click('button.primary[type=submit]'); pg.wait_for_timeout(200)
+            chequear('un gasto repetido avisa y no se guarda de entrada', ev("()=>__T.S.movs.length")==n0 and 'Guardar igual' in ev("()=>document.querySelector('button.primary[type=submit]').textContent"))
+            for _ in range(3):
+                if ev("()=>__T.S.movs.length")==n0+1: break
+                pg.click('button.primary[type=submit]'); pg.wait_for_timeout(200)
+            chequear('tocando «Guardar igual» se guarda', ev("()=>__T.S.movs.length")==n0+1)
+            ev("()=>{__T.S.tab='resumen';__T.S.acc='';__T.S.modal=null;__T.render()}")
+            chips = ev("()=>[...document.querySelectorAll('#view .chips .chip, .total .chips .chip')].map(c=>c.textContent.trim())")
+            chequear('en Inicio «Todo» es el primer botón de dueños', bool(chips) and chips[0]=='Todo', chips)
+            chequear('no queda ninguna tenencia de ejemplo (YMCXO) en una instalación nueva', ev("()=>!JSON.stringify(__T.S.hlds||[]).includes('YMCXO')"))
+
             print('Pantallas')
             for h in ['resumen', 'movimientos', 'tarjetas', 'deudas', 'analisis', 'ajustes']:
                 pg.evaluate(f"()=>{{location.hash='#{h}'}}"); pg.wait_for_timeout(250)
