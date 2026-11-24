@@ -68,6 +68,7 @@ function saveMov(){
   if(forMap) data.for=forMap;
   if(type==='out'){ const cv=($('#m-cat')||{}).value; if(cv&&cv!=='sin'){ data.cat=cv; if(note&&S.modal.catTouched) learnRule(note,cv); } }
   { const rf=($('#m-ref')||{}).value; if(rf&&rf.trim()) data.ref=rf.trim(); }
+  { const pj=($('#m-proj')||{}).value; if(pj&&type!=='transfer') data.proj=pj; else if(m&&m.proj&&!$('#m-proj')) data.proj=m.proj; }
   if(m&&m.fx) data.fx=m.fx;
   if(type==='in'){ const rp=$('#m-repay'); if(rp&&rp.value&&rp.value!==owner) data.repayFrom=rp.value; }
   if(m&&m.hold) data.hold=m.hold; keepRepay(m,data,type,owner,cents,date);
@@ -112,14 +113,18 @@ function saveAcc(){
   const ini={}; let initial=0, badI=false;
   $$('[data-ini]').forEach(i=>{ const raw=i.value.trim(); if(!raw) return; const v=parseAmt(raw); if(isNaN(v)) badI=true; else if(v){ ini[i.dataset.ini]=v; initial+=v; } });
   if(badI){err.textContent='Hay un saldo inicial que no se entiende.';return;}
+  { const so=($('#a-solo')||{}).value; if(so){ const tot=Object.keys(ini).reduce((x,k)=>x+ini[k],0); Object.keys(ini).forEach(k=>delete ini[k]); if(tot) ini[so]=tot; initial=tot; } }
+  if(S.closed.length&&a&&(a.cur!==($('#a-cur').value==='USD'?'USD':'ARS')||(a.kind==='card')!==!!($('#a-card')&&$('#a-card').checked))){err.textContent='Hay meses cerrados: no se puede cambiar la moneda ni el tipo de una cuenta que ya existe. Reabrí esos meses desde «Informe por dueño» primero.';return;}
   if(S.closed.length){
     const prev=a?(a.initialOwners||{yo:a.initial||0}):{}, ks=Array.from(new Set(Object.keys(prev).concat(Object.keys(ini))));
-    if(ks.some(k=>(prev[k]||0)!==(ini[k]||0))){err.textContent=a?'Hay meses cerrados: el saldo inicial (ni de quién es) se puede cambiar. Reabrí esos meses desde «Informe por dueño» primero.':'Hay meses cerrados: creá la cuenta con saldo 0 y anotá un ingreso con la fecha de hoy.';return;}
+    if(ks.some(k=>(prev[k]||0)!==(ini[k]||0))){err.textContent=a?'Hay meses cerrados: no se puede cambiar el saldo inicial (ni de quién es). Reabrí esos meses desde «Informe por dueño» primero.':'Hay meses cerrados: creá la cuenta con saldo 0 y anotá un ingreso con la fecha de hoy.';return;}
   }
   const maxOrder=S.accounts.reduce((m,x)=>Math.max(m,x.order||0),0);
-  const data={group:group||name,name:name,cur:$('#a-cur').value==='USD'?'USD':'ARS',yields:$('#a-yields').checked,initial:initial,initialOwners:ini,kind:($('#a-card')&&$('#a-card').checked)?'card':'',order:a?(a.order||0):Math.floor(maxOrder)+1,archived:a?$('#a-arch').checked:false};
+  const data={group:group||name,name:name,cur:$('#a-cur').value==='USD'?'USD':'ARS',yields:$('#a-yields').checked,initial:initial,initialOwners:ini,soloOwner:($('#a-solo')||{}).value||'',kind:($('#a-card')&&$('#a-card').checked)?'card':'',order:a?(a.order||0):Math.floor(maxOrder)+1,archived:a?$('#a-arch').checked:false};
   const id=a?a.id:slug((group||'')+'-'+name)+'-'+Math.random().toString(36).slice(2,6);
-  putAcc(id,data); closeModal(); toast('Cuenta guardada');
+  putAcc(id,data);
+  if(data.kind==='card'&&!S.cards.some(c=>c.account===id)){ S.cards.push({id:slug(accLabel(data))+'-'+Math.random().toString(36).slice(2,6),name:accLabel(data),account:id}); persist(); }
+  closeModal(); toast('Cuenta guardada');
 }
 function readName(errSel){
   const v=$('#n-name').value.trim();
@@ -130,7 +135,7 @@ function saveCard(){
   const v=readName('#n-err'); if(!v) return;
   const c=S.modal.c, then=S.modal.thenStmt;
   if(c){ c.name=v; S.cards=S.cards.map(x=>x.id===c.id?Object.assign({},x,{name:v}):x); }
-  else S.cards.push({id:slug(v)+'-'+Math.random().toString(36).slice(2,6),name:v});
+  else{ const free=S.accounts.find(a=>a.kind==='card'&&!a.archived&&!S.cards.some(c=>c.account===a.id)); S.cards.push(Object.assign({id:slug(v)+'-'+Math.random().toString(36).slice(2,6),name:v},free?{account:free.id}:{})); }
   persist(); closeModal(); render(); toast('Tarjeta guardada');
   if(then) openStmt();
 }
@@ -170,7 +175,7 @@ function stmtAnalyze(){
   if(!/^\d{4}-\d{2}$/.test(M.period)){err.textContent='Elegí el mes del resumen.';return;}
   if(!M.text.trim()){err.textContent='Pegá el texto del resumen o elegí «Cargar a mano».';return;}
   if(!M.totalStr){ const mt=stmtMeta(M.text); if(mt.total) M.totalStr=mt.total; if(mt.totalUsd&&!M.totalUsdStr) M.totalUsdStr=mt.totalUsd; }
-  M.rows=parseStatement(M.text,M.period); M.parsedZero=false;
+  M.rows=parseStatement(M.text,M.period); M.parsedZero=false; M.preDone=false;
   if(M.paid==='usd') M.rows.forEach(r=>{ if(r.rg){ r.inc=false; r.flag='No se cobra si pagás los dólares con dólares: se descuenta de tus gastos.'; } });
   if(!M.rows.length){ M.rows=[blankRow(M.period)]; M.parsedZero=true; }
   M.step=2; stmtShowReview();
@@ -178,7 +183,7 @@ function stmtAnalyze(){
 function stmtManual(){
   const M=S.modal; stmtRead();
   if(!/^\d{4}-\d{2}$/.test(M.period)){ $('#s-err').textContent='Elegí el mes del resumen.'; return; }
-  M.rows=[blankRow(M.period)]; M.parsedZero=false; M.step=2; stmtShowReview();
+  M.rows=[blankRow(M.period)]; M.parsedZero=false; M.preDone=false; M.step=2; stmtShowReview();
 }
 function reviewField(t){
   const M=S.modal; if(!M||!M.rows) return;
@@ -190,7 +195,7 @@ function reviewField(t){
   else if(f==='amt'){ r.amtStr=t.value; r.cents=parseAmt(t.value); }
   else if(f==='cat') r.cat=t.value;
   else if(f==='usd') r.usd=t.checked;
-  else if(f==='own') r.own=t.value;
+  else if(f==='own'){ r.own=t.value; if(!t.value){ r.pre=null; r.preAmb=false; r.planAhead=null; } }
   updateReviewSum();
 }
 function importReview(){
@@ -211,11 +216,19 @@ function importReview(){
   }
   let st=S.stmts.find(s=>s.card===M.card&&s.period===M.period);
   if(M.rows.some(r=>r.inc&&r.own&&isClosed(r.date))||(st&&S.movs.some(m=>m.stmt===st.id&&isClosed(m.date)))){ err.textContent='Hay consumos de otros dueños en un mes cerrado. Reabrilo desde «Informe por dueño» para cargar este resumen.'; return; }
-  if(st){ S.exp=S.exp.filter(e=>e.stmt!==st.id); S.movs=S.movs.filter(m=>m.stmt!==st.id); }
+  /* Lo que ya estaba anotado (como gasto de otro dueño) se conserva y se vuelve a ligar, en lugar de borrarse al reimportar. */
+  const keep=new Set(M.rows.filter(r=>r.inc&&r.own&&r.pre).map(r=>r.pre));
+  { const free2=prePend().concat(st?S.movs.filter(m=>m.stmt===st.id&&m.for):[]).filter(m=>!keep.has(m.id));
+    M.rows.forEach(r=>{ if(!r.inc||!r.own||r.pre||r.usd||r.planAhead) return; const ix=free2.findIndex(m=>m.cents===r.cents&&m.for&&m.for[r.own]&&Math.abs(daysBetween(m.date,r.date))<=45); if(ix>=0){ r.pre=free2[ix].id; keep.add(r.pre); free2.splice(ix,1); } }); }
+  if(st){ S.exp=S.exp.filter(e=>e.stmt!==st.id); S.movs=S.movs.filter(m=>m.stmt!==st.id||keep.has(m.id)); }
   else{ st={id:newId(),card:M.card,period:M.period,createdAt:Date.now()}; S.stmts.push(st); }
   st.paid=M.paid==='usd'?'usd':'pesos';
   let learned=0;
   M.rows.filter(r=>r.inc).forEach(r=>{
+    const pm=(r.own&&r.pre)?S.movs.find(x=>x.id===r.pre&&(!x.stmt||x.stmt===st.id)):null;
+    if(pm){ pm.stmt=st.id; pm.date=r.date; pm.cents=r.cents; pm.for={[r.own]:r.cents}; if(!pm.note) pm.note=((r.desc||'').trim()||'Consumo de tarjeta'); if(r.cat&&r.cat!=='sin') pm.cat=r.cat; return; }
+    const pl=(r.own&&r.planAhead)?S.plans.find(x=>x.id===r.planAhead):null;
+    if(pl){ const q=/(\d+)\s*\/\s*(\d+)/.exec(r.cuota||''); if(q&&+q[1]>pl.done){ planAdvanceTo(pl,+q[1],st.id,r.date,r.cat); return; } }
     if(r.own){ S.movs.push({id:newId(),type:'out',account:M.cardAcc,cents:r.cents,date:r.date,note:((r.desc||'').trim()||'Consumo de tarjeta')+(r.cuota?' · cuota '+r.cuota:''),owner:'yo',for:{[r.own]:r.cents},stmt:st.id,createdAt:Date.now()}); return; }
     const e={id:newId(),card:M.card,stmt:st.id,period:M.period,date:r.date,desc:(r.desc||'').trim()||'Sin descripción',cents:r.cents,cat:r.cat};
     if(r.cuota) e.cuota=r.cuota;

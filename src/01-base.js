@@ -41,24 +41,24 @@ const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
 /* ---------- Datos por defecto ---------- */
 const SEED=[
-  ['bbva-cuenta','BBVA','Cuenta',false,1],
-  ['bbva-fondo-comun','BBVA','Fondo común',true,2],
-  ['bbva-reservas','BBVA','Reservas',false,2.5],
-  ['santander-cuenta','Santander','Cuenta',false,3],
-  ['mercado-pago','Mercado Pago','Cuenta',true,4],
-  ['mercado-pago-reservas','Mercado Pago','Reservas',false,4.4],
-  ['naranja-x','Naranja X','Naranja X',true,5],
-  ['efectivo','Efectivo','Efectivo',false,6],
-  ['bbva-dolares','BBVA','Cuenta en dólares',false,1.5,'USD'],
+  ['efectivo','Efectivo','Efectivo',false,1],
+  ['bbva-cuenta','BBVA','Cuenta en pesos',false,2],
+  ['bbva-dolares','BBVA','Cuenta en dólares',false,2.1,'USD'],
+  ['bbva-fondo-comun','BBVA','Fondo Común de Inversión',true,2.2],
   ['bbva-tarjeta','BBVA','Tarjeta de crédito',false,2.8,'ARS','card'],
+  ['santander-cuenta','Santander','Cuenta en pesos',false,3],
   ['santander-tarjeta','Santander','Tarjeta de crédito',false,3.5,'ARS','card'],
-  ['naranja-x-frasco','Naranja X','Frasco',true,5.5]
+  ['mercado-pago','Mercado Pago','Cuenta',true,4],
+  ['mercado-pago-reserva-personal','Mercado Pago','Reserva personal',true,4.1],
+  ['mercado-pago-reserva-montonera','Mercado Pago','Reserva Montonera',true,4.2,'ARS','','montonera'],
+  ['naranja-x','Naranja X','Cuenta en pesos',true,5],
+  ['naranja-x-frasco','Naranja X','Frascos',true,5.5]
 ];
 const SEED_V4=['bbva-dolares','bbva-tarjeta','santander-tarjeta','naranja-x-frasco'];
 const SEED_V2=['bbva-reservas','mercado-pago-reservas'];
 const SEED_V3=['efectivo'];
-const seedAcc=x=>({id:x[0],group:x[1],name:x[2],cur:x[5]||'ARS',kind:x[6]||'',yields:x[3],initial:0,order:x[4],archived:false});
-const DEFAULT_OWNERS=[{id:'yo',name:'Gonza'},{id:'catequesis',name:'Catequesis'},{id:'grupo-misionero',name:'Grupo misionero'},{id:'parroquia',name:'Parroquia'}];
+const seedAcc=x=>Object.assign({id:x[0],group:x[1],name:x[2],cur:x[5]||'ARS',kind:x[6]||'',yields:x[3],initial:0,order:x[4],archived:false},x[7]?{soloOwner:x[7]}:{});
+const DEFAULT_OWNERS=[{id:'yo',name:'Gonzalo'},{id:'jovenes',name:'Jóvenes'},{id:'catequesis',name:'Catequesis'},{id:'parroquia',name:'Parroquia'},{id:'montonera',name:'Montonera'}];
 const DEFAULT_CATS=[['super','Supermercado'],['comida','Comida y delivery'],['transporte','Transporte y combustible'],['servicios','Servicios y suscripciones'],['salud','Salud'],['hogar','Hogar'],['ropa','Ropa y calzado'],['entretenimiento','Entretenimiento'],['educacion','Educación'],['impuestos','Impuestos y cargos'],['regalos','Regalos y donaciones'],['otros','Otros'],['sin','Sin categorizar']];
 /* Palabras clave: una palabra o frase exacta; con * al final coincide con el inicio de una palabra. */
 const DEFAULT_RULES=[

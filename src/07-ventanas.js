@@ -3,7 +3,7 @@ function accOptions(sel,extra){
   const ids=new Set(liveAccs().map(a=>a.id)); (extra||[]).forEach(i=>i&&ids.add(i));
   return S.accounts.filter(a=>ids.has(a.id)).sort(byOrder).map(a=>'<option value="'+esc(a.id)+'"'+(a.id===sel?' selected':'')+'>'+esc(accLabel(a))+'</option>').join('');
 }
-function ownOpts(sel){ return S.owners.map(o=>opt(o.id,o.name,o.id===sel)).join(''); }
+function ownOpts(sel){ return liveOwners(sel).map(o=>opt(o.id,o.name,o.id===sel)).join(''); }
 /* Lo último que cargaste (cuenta y dueño): queda guardado en el celular para precargarlo la próxima vez. */
 function prefGet(){ try{ return JSON.parse(localStorage.getItem('cuentas-ultimo')||'{}')||{}; }catch(_){ return {}; } }
 function prefSet(o){ try{ localStorage.setItem('cuentas-ultimo',JSON.stringify(Object.assign(prefGet(),o))); }catch(_){} }
@@ -25,7 +25,7 @@ function viewDeudas(){
   });
   h+='</section>'+addBtn+'<h2 class="sec" style="margin:4px 0 0">Entre quiénes</h2>';
   P.forEach((p,i)=>{
-    h+='<div class="debt"><div class="debt-h"><span><b>'+esc(ownerName(p.debtor))+'</b> le debe a <b>'+esc(ownerName(p.creditor))+'</b></span><b>'+amt(money(p.cents,p.c))+'</b></div>'
+    h+='<div class="debt"><div class="debt-h"><span><b>'+esc(ownerName(p.debtor))+'</b> le debe a <b>'+esc(ownerName(p.creditor))+'</b></span><b>'+amt(money(p.cents,p.c))+'</b></div><div class="mov-s" style="margin-top:-4px">'+(debtAge(p)>=1?'La deuda más vieja sin devolver: '+(debtAge(p)>60?'<b class="neg">hace '+diasTxt(debtAge(p))+'</b>':'hace '+diasTxt(debtAge(p))):'Deuda de hoy')+'</div>'
       +'<div class="mov-actions"><button class="btn sm primary" data-act="debt-pay" data-id="'+i+'">Devolver</button><button class="btn sm" data-act="debt-csv" data-id="'+i+'">Excel</button><button class="btn sm" data-act="debt-pdf" data-id="'+i+'">PDF / Imprimir</button></div>'
       +'<details><summary class="muted">De dónde sale</summary><div class="list-head">'
       +p.items.slice().sort((a,b)=>a.m.date<b.m.date?1:-1).map(it=>{ const v=it.a===p.debtor?it.v:-it.v; const man=!!it.m.src;
@@ -56,7 +56,7 @@ function debtPrint(i){
   w.document.open(); w.document.write(html); w.document.close(); setTimeout(()=>{ try{ w.focus(); w.print(); }catch(_){} },400);
 }
 function claimModal(){
-  const os=S.owners;
+  const os=liveOwners();
   return '<form id="clform" class="sheet" novalidate><h2>Deuda o devolución a mano</h2>'
     +'<p class="hint">Sirve para lo que no pasó por ninguna cuenta de la app: una deuda de antes, o una devolución que ya se hizo por fuera.</p>'
     +'<fieldset class="seg"><legend class="muted" style="position:absolute;left:-9999px">Qué anotás</legend><label><input type="radio" name="cl-kind" value="add" checked><span>Suma deuda</span></label><label><input type="radio" name="cl-kind" value="sub"><span>Resta deuda</span></label></fieldset>'
@@ -74,6 +74,7 @@ function saveClaim(){
   if(from===to){ err.textContent='Elegí dos dueños distintos.'; return; }
   if(isNaN(cents)||cents<=0){ err.textContent='Ingresá un monto mayor a cero.'; return; }
   if(!date){ err.textContent='Elegí una fecha.'; return; }
+  if(isClosed(date)){ err.textContent='Ese mes está cerrado. Reabrilo desde «Informe por dueño» o cambiá la fecha.'; return; }
   S.claims.push({id:newId(),from:from,to:to,cur:$('#cl-cur').value==='USD'?'USD':'ARS',cents:sb?-cents:cents,date:date,note:$('#cl-note').value.trim(),src:'manual',createdAt:Date.now()});
   persist(); closeModal(); onData(); toast('Guardado');
 }
@@ -86,7 +87,7 @@ function movModal(m,pt,pa,pay){
   const first=liveAccs()[0];
   const lastAcc=prefGet().acc, lastOk=lastAcc&&accById(lastAcc)&&!accById(lastAcc).archived&&accById(lastAcc).kind!=='card';
   const sel=m?m.account:(pay.from||((pa&&accById(pa)&&!accById(pa).archived)?pa:(lastOk?lastAcc:(first&&first.id))));
-  const ownSel=m?(m.owner||'yo'):(pay.owner||S.lastOwner);
+  const ownSel=m?(m.owner||'yo'):(pay.owner||soloOf(sel)||S.lastOwner);
   const toOwnSel=m?(m.toOwner||ownSel):(pay.toOwner||ownSel);
   const kindSel=m?(m.kind||''):(pay.kind||'');
   const fm=m&&m.for?m.for:null, fk=fm?Object.keys(fm):[];
@@ -101,15 +102,16 @@ function movModal(m,pt,pa,pay){
   const own=isY?'':'<label for="m-own" id="m-own-l">Con plata de quién</label><select id="m-own"'+(ownSel!=='yo'?' class="odd"':'')+'>'+ownOpts(ownSel)+'</select><p class="hint">De quién es la plata que se usa: tuya, de la Catequesis, etc. Se acuerda del último que usaste.</p>';
   const trBlock=isY?'':'<div id="tr-wrap" hidden><label for="m-toown">Pasa a ser plata de</label><select id="m-toown">'+ownOpts(toOwnSel)+'</select>'
     +'<div id="kind-wrap" hidden><label for="m-kind">¿Qué significa?</label><select id="m-kind">'+opt('repay','Devolución de una deuda',kindSel==='repay')+opt('loan','Préstamo (me lo tiene que devolver)',kindSel==='loan')+opt('gift','Aporte, sin deuda',kindSel==='gift')+'</select></div></div>';
-  const forBlock=isY?'':'<div id="for-wrap" hidden><label for="m-for">¿Para quién es el gasto?</label><select id="m-for">'+opt('','Para el mismo dueño de la plata',!forSel)+S.owners.map(o=>opt(o.id,o.name,forSel===o.id)).join('')+opt('__multi','Repartir entre varios…',forSel==='__multi')+'</select><p class="hint">Si pagaste algo de otro dueño (por ejemplo, de la Catequesis) con tu plata, elegilo acá: queda anotado como deuda.</p>'
-    +'<div id="for-multi" hidden>'+S.owners.map(o=>'<label class="fo-row"><span>'+esc(o.name)+'</span><input data-fo="'+esc(o.id)+'" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(fm&&fm[o.id]?centsToInput(fm[o.id]):'')+'"></label>').join('')+'</div></div>';
-  const repBlock=isY?'':'<div id="rep-wrap" hidden><label for="m-repay">¿Es una devolución de una deuda?</label><select id="m-repay">'+opt('','No, es plata que entra',!repSel)+S.owners.map(o=>opt(o.id,'Sí, me la devuelve '+o.name,repSel===o.id)).join('')+'</select></div>';
+  const forBlock=isY?'':'<div id="for-wrap" hidden><label for="m-for">¿Para quién es el gasto?</label><select id="m-for">'+opt('','Para el mismo dueño de la plata',!forSel)+liveOwners(forSel).map(o=>opt(o.id,o.name,forSel===o.id)).join('')+opt('__multi','Repartir entre varios…',forSel==='__multi')+'</select><p class="hint">Si pagaste algo de otro dueño (por ejemplo, de la Catequesis) con tu plata, elegilo acá: queda anotado como deuda.</p>'
+    +'<div id="for-multi" hidden>'+liveOwners(fk).map(o=>'<label class="fo-row"><span>'+esc(o.name)+'</span><input data-fo="'+esc(o.id)+'" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(fm&&fm[o.id]?centsToInput(fm[o.id]):'')+'"></label>').join('')+'</div></div>';
+  const repBlock=isY?'':'<div id="rep-wrap" hidden><label for="m-repay">¿Es una devolución de una deuda?</label><select id="m-repay">'+opt('','No, es plata que entra',!repSel)+liveOwners(repSel).map(o=>opt(o.id,'Sí, me la devuelve '+o.name,repSel===o.id)).join('')+'</select></div>';
   /* Lo básico va arriba; dueño, para quién, devolución y cuotas quedan en «Más opciones». */
   const isCardSel=!!(sel&&isCard(sel)), ownerOdd=!!(m&&((m.owner||'yo')!=='yo'||m.for||m.repayFrom||m.toOwner));
   const openMore=(!isY&&(ownerOdd||modeSel==='own'||(type==='out'&&isCardSel)||!!pay.repayFrom||!!pay.toOwner))?' open':'';
   const catVal=m?(m.cat||'sin'):(pay.cat||'sin');
   const catBlock=isY?'':'<div id="cat-wrap" hidden><label for="m-cat">Categoría</label><select id="m-cat">'+S.cats.map(c=>opt(c.id,c.name,c.id===catVal)).join('')+'</select></div>';
-  const extraBlock=isY?'':'<label for="m-ref">N.º de comprobante o factura (opcional)</label><input id="m-ref" maxlength="40" autocomplete="off" value="'+esc(m&&m.ref?m.ref:'')+'">'+(m?'':'<div id="fx-wrap"><label class="chk"><input type="checkbox" id="m-fixed"><span id="fx-t">Se repite todos los meses (gasto fijo)</span></label></div>');
+  const projBlock=(isY||!S.goals.length)?'':'<label for="m-proj">Proyecto (opcional)</label><select id="m-proj">'+opt('','Ninguno',!(m&&m.proj))+S.goals.map(g=>opt(g.id,g.name,m&&m.proj===g.id)).join('')+'</select>';
+  const extraBlock=isY?'':projBlock+'<label for="m-ref">N.º de comprobante o factura (opcional)</label><input id="m-ref" maxlength="40" autocomplete="off" value="'+esc(m&&m.ref?m.ref:'')+'">'+(m?'':'<div id="fx-wrap"><label class="chk"><input type="checkbox" id="m-fixed"><span id="fx-t">Se repite todos los meses (gasto fijo)</span></label></div>');
   const moreBlock=isY?'':'<details id="m-more" class="more"'+openMore+'><summary id="m-more-s">Más opciones</summary>'+trBlock+forBlock+repBlock+extraBlock
 +'</details>';
   const quickBox=(m||Object.keys(pay).length)?'':'<div class="quick"><label for="m-quick">Escribilo en una línea</label><input id="m-quick" type="text" autocomplete="off" autocapitalize="none" enterkeyhint="done" placeholder="super 15000 bbva" data-focus><p class="hint">Escribí como hablás: qué fue, el monto y la cuenta. Ej.: farmacia 3500 efectivo.</p><p class="hint" id="m-quick-h" aria-live="polite"></p></div>';
@@ -132,16 +134,18 @@ function movModal(m,pt,pa,pay){
 function applyQuick(txt){
   const hint=$('#m-quick-h'); if(!hint) return;
   if(!txt.trim()){ hint.textContent=''; return; }
-  const r=QuickMov.parse(txt,{accounts:S.accounts,owners:S.owners,today:todayStr()});
+  const r=QuickMov.parse(txt,{accounts:S.accounts,owners:liveOwners(),today:todayStr()});
   const set=(sel,v)=>{ const el=$(sel); if(el&&v!=null) el.value=v; };
   /* Lo que el formulario traía al abrir (cuenta, destino y dueño): si la frase no nombra algo, vuelve a eso y no queda lo de la frase anterior. */
-  if(!S.modal.qdef){ const g=x=>{ const el=$(x); return el?el.value:null; }; S.modal.qdef={acc:g('#m-acc'),to:g('#m-to'),own:g('#m-own'),toown:g('#m-toown')}; }
+  if(!S.modal.qdef){ const g=x=>{ const el=$(x); return el?el.value:null; }; S.modal.qdef={type:(($('input[name=mtype]:checked')||{}).value)||'out',acc:g('#m-acc'),to:g('#m-to'),own:g('#m-own'),toown:g('#m-toown')}; }
   const D=S.modal.qdef;
+  /* Si la frase no trae un verbo (cobré, gasté, pasé…), se respeta el tipo que ya estaba elegido: no se cambia un Ingreso a Egreso sin avisar. */
+  if(!r.typeExplicit){ const cur=(($('input[name=mtype]:checked')||{}).value)||D.type; r.type=S.modal.typeTouched?cur:D.type; }
   const rad=$('input[name=mtype][value='+r.type+']'); if(rad) rad.checked=true;
   const rm=$('input[name=mmode][value=acc]'); if(rm) rm.checked=true;
   set('#m-acc',r.acc||D.acc);
   set('#m-to',r.type==='transfer'?(r.to||D.to):D.to);
-  const ow=r.owner||D.own; set('#m-own',ow); set('#m-toown',r.owner||D.toown||ow);
+  const ow=r.owner||soloOf(($('#m-acc')||{}).value)||D.own; set('#m-own',ow); set('#m-toown',r.owner||D.toown||ow);
   { const mo=$('#m-more'); if(mo&&ow!=='yo') mo.open=true; }
   set('#m-amt',r.cents!=null?centsToInput(r.cents):'');
   set('#m-date',r.date||todayStr());
@@ -277,6 +281,7 @@ function accModal(a,preGroup,preCur){
     +((a&&S.movs.some(m=>m.account===a.id||m.to===a.id))?'<p class="hint">La moneda no se puede cambiar porque la cuenta ya tiene movimientos.</p>':'')
     +'<label class="check"><input type="checkbox" id="a-yields"'+(a&&a.yields?' checked':'')+'>Genera rendimientos diarios</label>'
     +'<label class="check"><input type="checkbox" id="a-card"'+(a&&a.kind==='card'?' checked':'')+'>Es una tarjeta de crédito (no tiene saldo: solo anoto consumos de otros, que quedan como deuda)</label>'
+    +'<label for="a-solo">Esta cuenta es de…</label><select id="a-solo">'+opt('','Varios dueños (efectivo, cuenta compartida)',!a||!a.soloOwner)+liveOwners(a&&a.soloOwner).map(o=>opt(o.id,o.name,!!(a&&a.soloOwner===o.id))).join('')+'</select><p class="hint">Si toda la plata de esta cuenta es de un solo dueño (por ejemplo «Reserva Montonera»), elegilo: al cargar movimientos de esa cuenta, el dueño se completa solo.</p>'
     +'<label>Saldo inicial de cada dueño</label>'+S.owners.map(o=>'<label class="fo-row" for="ini-'+esc(o.id)+'"><span>'+esc(o.name)+'</span><input id="ini-'+esc(o.id)+'" data-ini="'+esc(o.id)+'" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(a&&initOf(a)[o.id]?centsToInput(initOf(a)[o.id]):'')+'"></label>').join('')
     +'<p class="hint">Lo que había en la cuenta antes del primer movimiento, repartido por dueño (en Efectivo, lo de cada uno). En una tarjeta, escribí la deuda con signo menos.</p>'
     +(a?'<label class="check"><input type="checkbox" id="a-arch"'+(a.archived?' checked':'')+'>Archivada (se oculta y no suma al total)</label>':'')
@@ -316,7 +321,7 @@ const catModal=(c,draft)=>{
   return h;
 };
 const ownerUsed=id=>S.movs.some(m=>m.owner===id||m.toOwner===id||(m.for&&m.for[id]!=null)||(m.split&&m.split[id]!=null))||S.claims.some(c=>c.from===id||c.to===id)||S.movs.some(m=>m.repay===id||m.repayTo===id)||S.ops.some(o=>o.owner===id)||S.hlds.some(h=>h.iowner===id&&h.initial)||S.accounts.some(a=>a.initialOwners&&a.initialOwners[id]);
-const ownerModal=o=>simpleNameModal('wform',o?'Editar dueño':'Nuevo dueño','Nombre (por ejemplo, un grupo o una persona)',o?o.name:'',(o&&o.id!=='yo'&&!ownerUsed(o.id))?'<button type="button" class="btn danger" data-act="owner-del">Eliminar</button>':'','');
+const ownerModal=o=>simpleNameModal('wform',o?'Editar dueño':'Nuevo dueño','Nombre (por ejemplo, un grupo o una persona)',o?o.name:'',((o&&o.id!=='yo'&&!ownerUsed(o.id))?'<button type="button" class="btn danger" data-act="owner-del">Eliminar</button>':'')+((o&&o.id!=='yo')?'<button type="button" class="btn" data-act="owner-arch" data-id="'+esc(o.id)+'">'+(o.archived?'Reactivar':'Archivar')+'</button>':''),(o&&o.id!=='yo')?'Archivar sirve para un dueño que estuvo «por un tiempo»: deja de aparecer en los botones y selectores, pero conserva su historia y sus informes. Para archivarlo tiene que estar en cero (sin plata, deudas ni cuotas).':'');
 
 /* Cuenta de tarjeta (en Cuentas) donde se anotan los consumos de otros dueños de esta tarjeta del resumen. */
 function cardAccFor(cardId,cur){
@@ -347,6 +352,7 @@ function stmtReview(){
   if(M.rows.length===1&&M.parsedZero) h+='<div class="note" style="margin-top:10px">No encontré consumos en ese texto. Podés cargarlos a mano abajo, o probar copiando solo la tabla de consumos.</div>';
   const cAccs=liveAccs().filter(a=>a.kind==='card'&&curOf(a.id)==='ARS');
   if(!M.cardAcc) M.cardAcc=cardAccFor(M.card);
+  matchPre(M);
   if(S.owners.length>1) h+='<div class="note" style="margin-top:10px">Si un consumo es de otro dueño, elegilo en «De quién es». No cuenta como gasto tuyo: se anota como deuda en la tarjeta.'+(cAccs.length?'<label for="rv-acc" style="margin-top:8px">Anotarlos en la tarjeta</label><select id="rv-acc">'+cAccs.map(a=>opt(a.id,accLabel(a),a.id===M.cardAcc)).join('')+'</select>':'<br><strong>Primero creá una cuenta marcada como tarjeta de crédito en Ajustes.</strong>')+'</div>';
   h+='<div class="rv-sum" id="rv-sum"></div><div id="rv-rows">';
   M.rows.forEach((r,i)=>{
@@ -354,8 +360,10 @@ function stmtReview(){
       +'<input type="date" data-f="date" aria-label="Fecha" value="'+esc(r.date)+'"><input data-f="amt" class="rv-amt" inputmode="decimal" autocomplete="off" aria-label="Monto" placeholder="Monto" value="'+esc(r.amtStr)+'">'
       +'<input data-f="desc" class="rv-desc" autocomplete="off" aria-label="Descripción" placeholder="Descripción" value="'+esc(r.desc)+'">'
       +'<select data-f="cat" class="rv-cat" aria-label="Categoría">'+catOpts(r.cat)+'</select>'
+      +(r.pre?'<div class="rv-flag" style="color:var(--pos)">Ya lo anotaste antes como gasto de '+esc(ownerName(r.own))+': se reconoce y no se duplica.'+(r.preAmb?' <b style="color:var(--warn)">Ojo: hay otro consumo del mismo monto; revisá que sea este.</b>':'')+'</div>':'')
+      +(r.planAhead?'<div class="rv-flag" style="color:var(--pos)">Es una cuota de un gasto en cuotas que ya anotaste para '+esc(ownerName(r.own))+': se anota ahora y no se duplica.</div>':'')
       +(r.cuota||r.flag?'<div class="rv-flag">'+(r.cuota?'Cuota '+esc(r.cuota)+'. ':'')+esc(r.flag)+'</div>':'')
-      +(S.owners.length>1?'<label class="rv-own">De quién es <select data-f="own" aria-label="De quién es el consumo">'+opt('','Mío',!r.own)+S.owners.filter(o=>o.id!=='yo').map(o=>opt(o.id,o.name,r.own===o.id)).join('')+'</select></label>':'')
+      +(S.owners.length>1?'<label class="rv-own">De quién es <select data-f="own" aria-label="De quién es el consumo">'+opt('','Mío',!r.own)+liveOwners(r.own).filter(o=>o.id!=='yo').map(o=>opt(o.id,o.name,r.own===o.id)).join('')+'</select></label>':'')
       +'<label class="rv-usd"><input type="checkbox" data-f="usd"'+(r.usd?' checked':'')+'> En dólares (US$)</label></div>';
   });
   h+='</div><div style="margin:8px 0"><button type="button" class="link" data-act="rv-add">+ Agregar una línea</button></div>'
@@ -505,6 +513,7 @@ function modalBody(kind,data){
     case 'claim': return claimModal();
     case 'budget': return budgetModal(data.b);
     case 'fixed': return fixedModal(data.f);
+    case 'projdet': return projModal(data.g);
     case 'goal': return goalModal(data.g);
     case 'px': return pxModal(data.hold);
     case 'menu': return menuModal();

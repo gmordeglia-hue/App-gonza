@@ -21,6 +21,32 @@
     else if(ld>-1){ var p=s.split('.'); if(p.length>2||(p[p.length-1].length===3&&p[0]!=='0')) s=s.replace(/\./g,''); }
     var n=Number(s); return isFinite(n)?n:NaN;
   }
+  var NW={cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,veinte:20,veintiun:21,veintiuno:21,veintidos:22,veintitres:23,veinticuatro:24,veinticinco:25,veintiseis:26,veintisiete:27,veintiocho:28,veintinueve:29,treinta:30,cuarenta:40,cincuenta:50,sesenta:60,setenta:70,ochenta:80,noventa:90,cien:100,ciento:100,doscientos:200,trescientos:300,cuatrocientos:400,quinientos:500,seiscientos:600,setecientos:700,ochocientos:800,novecientos:900};
+  function hasW(o,k){ return Object.prototype.hasOwnProperty.call(o,k); }
+  /* «dos mil quinientos», «veinte lucas», «treinta y cinco mil», «medio palo»: se usa solo si no hay un monto con números. */
+  function wordsAmount(nt,used){
+    var i=0;
+    while(i<nt.length){
+      var w0=nt[i];
+      if(used[i]||!(hasW(NW,w0)||w0==='mil'||w0==='medio'||w0==='media')){ i++; continue; }
+      var total=0,cur=0,span=[],big=false,j=i;
+      for(;j<nt.length&&!used[j];j++){
+        var w=nt[j];
+        if(hasW(NW,w)){ cur+=NW[w]; span.push(j); }
+        else if(w==='y'&&span.length&&j+1<nt.length&&hasW(NW,nt[j+1])){ span.push(j); }
+        else if(w==='mil'){ total+=(cur||1)*1000; cur=0; span.push(j); big=true; }
+        else if(w==='millon'||w==='millones'){ total+=(cur||1)*1e6; cur=0; span.push(j); big=true; }
+        else if((w==='medio'||w==='media')&&(nt[j+1]==='palo'||nt[j+1]==='palos'||nt[j+1]==='millon')){ total=500000; cur=0; span.push(j,j+1); big=true; j+=2; break; }
+        else if(w==='luca'||w==='lucas'){ total=((total+cur)||1)*1000; cur=0; span.push(j); big=true; j++; break; }
+        else if(w==='palo'||w==='palos'||w==='palu'){ total=((total+cur)||1)*1e6; cur=0; span.push(j); big=true; j++; break; }
+        else break;
+      }
+      var val=total+cur;
+      if(span.length&&(big||val>=100)) return {v:val,span:span};
+      i=j>i?j:i+1;
+    }
+    return null;
+  }
   function pad(n){ return (n<10?'0':'')+n; }
   function ymd(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
   function addDays(todayStr,n){ var p=todayStr.split('-'); var d=new Date(+p[0],+p[1]-1,+p[2]+n); return ymd(d); }
@@ -78,21 +104,12 @@
       if(!best) best=cands.slice().sort(function(a,b){return b.v-a.v})[0];
       res.cents=Math.round(best.v*100);
       best.span.forEach(function(k){ used[k]=true; });
+    }else{
+      var wa=wordsAmount(nt,used);
+      if(wa){ res.cents=Math.round(wa.v*100); wa.span.forEach(function(k){ used[k]=true; }); }
     }
     /* símbolos sueltos ($) */
     for(i=0;i<nt.length;i++) if(!used[i]&&(nt[i]===''||nt[i]==='$')) used[i]=true;
-
-    /* dueño */
-    var ownerHit=null;
-    for(i=0;i<nt.length&&!ownerHit;i++){
-      if(used[i]||!nt[i]) continue;
-      for(var o=0;o<owners.length;o++){
-        var al=words(owners[o].name); if(owners[o].id==='yo') al=al.concat(['yo']);
-        var hit=al.some(function(w){ return w===nt[i] || (nt[i].length>=4&&w.length>nt[i].length&&w.indexOf(nt[i])===0); });
-        if(hit){ ownerHit=owners[o].id; used[i]=true; break; }
-      }
-    }
-    res.owner=ownerHit;
 
     /* cuentas */
     function accOf(idxs){
@@ -110,7 +127,7 @@
         if(res.cur==='USD'&&a.cur==='USD') sc+=0.5;
         if(res.cur==='USD'&&a.cur!=='USD') sc-=0.5;
         if(a.cur==='USD'&&res.cur!=='USD'&&!exp.some(function(e){return e.w==='dolares'||e.w==='dolar'})) sc-=0.5;
-        if(a.name==='Cuenta'&&a.kind!=='card') sc+=0.25;
+        if(/^cuenta( en pesos)?$/i.test(a.name)&&a.kind!=='card') sc+=0.25;
         if(sc>bestS){ bestS=sc; bestA=a; bestK=ks; }
       });
       if(!bestA&&res.cur==='USD'){ bestA=accounts.filter(function(a){return a.cur==='USD'})[0]||null; }
@@ -136,6 +153,18 @@
     }
     if(res.acc){ var ac=accounts.filter(function(a){return a.id===res.acc})[0]; if(ac&&!res.cur) res.cur=ac.cur; }
 
+    /* dueño */
+    var ownerHit=null;
+    for(i=0;i<nt.length&&!ownerHit;i++){
+      if(used[i]||!nt[i]) continue;
+      for(var o=0;o<owners.length;o++){
+        var al=words(owners[o].name); if(owners[o].id==='yo') al=al.concat(['yo']);
+        var hit=al.some(function(w){ return w===nt[i] || (nt[i].length>=4&&w.length>nt[i].length&&w.indexOf(nt[i])===0); });
+        if(hit){ ownerHit=owners[o].id; used[i]=true; break; }
+      }
+    }
+    res.owner=ownerHit;
+
     /* lo que sobra es el detalle */
     /* se conservan las palabras de enlace del medio ("Pago de luz") y se sacan las de los extremos */
     var rest=[]; for(i=0;i<tok.length;i++){ if(used[i]) continue; rest.push({w:tok[i].replace(/^[,;:.]+|[,;:.]+$/g,''),s:!!STOP[nt[i]]}); }
@@ -143,6 +172,7 @@
     while(rest.length&&(rest[rest.length-1].s||!rest[rest.length-1].w)) rest.pop();
     var note=rest.map(function(x){return x.w}).filter(Boolean).join(' ');
     res.note=note?note.charAt(0).toUpperCase()+note.slice(1):'';
+    res.typeExplicit=hasTransferWord||hasIn||hasOut||res.type==='transfer';
     res.ok=res.cents!=null;
     return res;
   }

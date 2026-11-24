@@ -27,6 +27,7 @@ document.addEventListener('click',e=>{
   else if(act==='plan-no'){ S.confirmPlan=''; render(); }
   else if(act==='plan-yes'){ S.plans=S.plans.filter(x=>x.id!==id); S.confirmPlan=''; persist(); onData(); toast('Cuotas canceladas'); }
   else if(act==='claim-del'){
+    { const cl=S.claims.find(x=>x.id===id); if(cl&&isClosed(cl.date)){ toast('Esa deuda es de un mes cerrado. Reabrilo desde «Informe por dueño».'); return; } }
     if(!b.dataset.sure){ b.dataset.sure='1'; b.textContent='Tocá otra vez para eliminar'; return; }
     S.claims=S.claims.filter(x=>x.id!==id); persist(); onData(); toast('Eliminado');
   }
@@ -63,7 +64,7 @@ document.addEventListener('click',e=>{
   else if(act==='more'){ S.limit+=100; render(); }
   else if(act==='export') exportBackup();
   else if(act==='import'){ const f=$('#imp-file'); if(f) f.click(); }
-  else if(act==='imp-yes'){ const cerr=(S.closed||[]).slice(); applyData(S.modal.data); S.closed=Array.from(new Set((S.closed||[]).concat(cerr))); persist(); closeModal(); onData(); toast('Copia restaurada'); }
+  else if(act==='imp-yes'){ const cerr=(S.closed||[]).slice(); applyData(S.modal.data); S.closed=Array.from(new Set((S.closed||[]).concat(cerr))); ensureCards(); applyPlans(); applyFixed(); persist(); closeModal(); onData(); toast('Copia restaurada'); }
   else if(act==='chart'){ S.chartAcc=id||''; render(); }
   else if(act==='owner-new') openModal('owner',{o:null});
   else if(act==='owner-edit') openModal('owner',{o:S.owners.find(x=>x.id===id)});
@@ -124,10 +125,11 @@ document.addEventListener('change',e=>{
   if(t.dataset&&t.dataset.filter){ S[t.dataset.filter]=t.value; S.limit=100; S.xLimit=100; if(t.dataset.filter==='xPeriod') S.xCat=''; render(); }
   else if(t.dataset&&t.dataset.xcat){ setExpCat(t.dataset.xcat,t.value); }
   else if(t.dataset&&t.dataset.f){ reviewField(t); }
-  else if(t.name==='mtype'||t.name==='mmode') toggleTo();
+  else if(t.name==='mtype'||t.name==='mmode'){ if(S.modal&&t.name==='mtype') S.modal.typeTouched=true; toggleTo(); }
   else if(t.id==='m-cat'){ if(S.modal) S.modal.catTouched=true; }
   else if(t.id==='m-to'){ if(S.modal) S.modal.toTouched=true; refreshMovForm(); }
   else if(t.id==='m-kind'){ if(S.modal) S.modal.kindTouched=true; refreshMovForm(); }
+  else if(t.id==='m-acc'){ const so=soloOf(t.value); if(so&&$('#m-own')) $('#m-own').value=so; refreshMovForm(); }
   else if(t.id==='m-acc'||t.id==='m-to'||t.id==='m-own'||t.id==='m-toown'||t.id==='m-for') refreshMovForm();
   else if(t.id==='o-hold') updOpTotal();
   else if(t.id==='u-date') updPreview();
@@ -170,12 +172,12 @@ function init(){
   readHash();
   if(!loadStore()) return;
   S.xPeriod='';
-  applyPlans(); applyFixed();
+  applyPlans(); applyFixed(); if(ensureCards()) persist();
   onData();
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&(applyPlans()|applyFixed())) onData(); });
   armAutoBackup();
   try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(_){}
 }
 /* Solo para las pruebas automáticas (tests/probar.py): se activa abriendo la app con ?test en la dirección. */
-if(location.search.indexOf('test')>-1) window.__T={S:S,extraAct:extraAct,delMov:delMov,categorize:categorize,informeData:informeData,applyFixed:applyFixed,budgetSpent:budgetSpent,isClosed:isClosed,monthSpend:monthSpend,debtPairs:debtPairs,balance:balance,accById:accById,persist:persist,onData:onData,render:render,todayStr:todayStr,openModal:openModal,stmtShowReview:stmtShowReview,cardReminder:cardReminder,cardAccFor:cardAccFor,applyPlans:applyPlans,ownerBalances:ownerBalances,normalizeData:normalizeData,backupJson:backupJson};
+if(location.search.indexOf('test')>-1) window.__T={S:S,prePend:prePend,matchPre:matchPre,ownerBusy:ownerBusy,soloOf:soloOf,commitData:commitData,debtAge:debtAge,ensureCards:ensureCards,extraAct:extraAct,delMov:delMov,categorize:categorize,informeData:informeData,applyFixed:applyFixed,budgetSpent:budgetSpent,isClosed:isClosed,monthSpend:monthSpend,debtPairs:debtPairs,balance:balance,accById:accById,persist:persist,onData:onData,render:render,todayStr:todayStr,openModal:openModal,stmtShowReview:stmtShowReview,cardReminder:cardReminder,cardAccFor:cardAccFor,applyPlans:applyPlans,ownerBalances:ownerBalances,normalizeData:normalizeData,backupJson:backupJson};
 init();

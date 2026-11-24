@@ -9,6 +9,10 @@ const accById=id=>S.accounts.find(a=>a.id===id);
 const curOf=id=>{const a=S.accounts.find(x=>x.id===id);return a&&a.cur==='USD'?'USD':'ARS'};
 const accLabel=a=>a?((a.group&&a.group!==a.name?a.group+' · '+a.name:a.name)+(a.cur==='USD'&&!/US\$|dólar/i.test(a.name)?' (US$)':'')):'Cuenta eliminada';
 const ownerName=id=>{const o=S.owners.find(x=>x.id===id);return o?o.name:'Otro'};
+/* Dueños que se ofrecen en botones y selectores: los archivados no salen (salvo el que ya está elegido). */
+const liveOwners=keep=>S.owners.filter(o=>!o.archived||o.id===keep);
+/* Si toda la plata de una cuenta es de un solo dueño («Reserva Montonera»), devuelve ese dueño. */
+const soloOf=id=>{ const a=S.accounts.find(x=>x.id===id); return (a&&a.soloOwner&&S.owners.some(o=>o.id===a.soloOwner&&!o.archived))?a.soloOwner:''; };
 const catName=id=>{const c=S.cats.find(x=>x.id===id);return c?c.name:'Sin categorizar'};
 const cardName=id=>{const c=S.cards.find(x=>x.id===id);return c?c.name:'Tarjeta eliminada'};
 

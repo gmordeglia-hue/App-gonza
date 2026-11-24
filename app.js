@@ -44,24 +44,24 @@ const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
 /* ---------- Datos por defecto ---------- */
 const SEED=[
-  ['bbva-cuenta','BBVA','Cuenta',false,1],
-  ['bbva-fondo-comun','BBVA','Fondo común',true,2],
-  ['bbva-reservas','BBVA','Reservas',false,2.5],
-  ['santander-cuenta','Santander','Cuenta',false,3],
-  ['mercado-pago','Mercado Pago','Cuenta',true,4],
-  ['mercado-pago-reservas','Mercado Pago','Reservas',false,4.4],
-  ['naranja-x','Naranja X','Naranja X',true,5],
-  ['efectivo','Efectivo','Efectivo',false,6],
-  ['bbva-dolares','BBVA','Cuenta en dólares',false,1.5,'USD'],
+  ['efectivo','Efectivo','Efectivo',false,1],
+  ['bbva-cuenta','BBVA','Cuenta en pesos',false,2],
+  ['bbva-dolares','BBVA','Cuenta en dólares',false,2.1,'USD'],
+  ['bbva-fondo-comun','BBVA','Fondo Común de Inversión',true,2.2],
   ['bbva-tarjeta','BBVA','Tarjeta de crédito',false,2.8,'ARS','card'],
+  ['santander-cuenta','Santander','Cuenta en pesos',false,3],
   ['santander-tarjeta','Santander','Tarjeta de crédito',false,3.5,'ARS','card'],
-  ['naranja-x-frasco','Naranja X','Frasco',true,5.5]
+  ['mercado-pago','Mercado Pago','Cuenta',true,4],
+  ['mercado-pago-reserva-personal','Mercado Pago','Reserva personal',true,4.1],
+  ['mercado-pago-reserva-montonera','Mercado Pago','Reserva Montonera',true,4.2,'ARS','','montonera'],
+  ['naranja-x','Naranja X','Cuenta en pesos',true,5],
+  ['naranja-x-frasco','Naranja X','Frascos',true,5.5]
 ];
 const SEED_V4=['bbva-dolares','bbva-tarjeta','santander-tarjeta','naranja-x-frasco'];
 const SEED_V2=['bbva-reservas','mercado-pago-reservas'];
 const SEED_V3=['efectivo'];
-const seedAcc=x=>({id:x[0],group:x[1],name:x[2],cur:x[5]||'ARS',kind:x[6]||'',yields:x[3],initial:0,order:x[4],archived:false});
-const DEFAULT_OWNERS=[{id:'yo',name:'Gonza'},{id:'catequesis',name:'Catequesis'},{id:'grupo-misionero',name:'Grupo misionero'},{id:'parroquia',name:'Parroquia'}];
+const seedAcc=x=>Object.assign({id:x[0],group:x[1],name:x[2],cur:x[5]||'ARS',kind:x[6]||'',yields:x[3],initial:0,order:x[4],archived:false},x[7]?{soloOwner:x[7]}:{});
+const DEFAULT_OWNERS=[{id:'yo',name:'Gonzalo'},{id:'jovenes',name:'Jóvenes'},{id:'catequesis',name:'Catequesis'},{id:'parroquia',name:'Parroquia'},{id:'montonera',name:'Montonera'}];
 const DEFAULT_CATS=[['super','Supermercado'],['comida','Comida y delivery'],['transporte','Transporte y combustible'],['servicios','Servicios y suscripciones'],['salud','Salud'],['hogar','Hogar'],['ropa','Ropa y calzado'],['entretenimiento','Entretenimiento'],['educacion','Educación'],['impuestos','Impuestos y cargos'],['regalos','Regalos y donaciones'],['otros','Otros'],['sin','Sin categorizar']];
 /* Palabras clave: una palabra o frase exacta; con * al final coincide con el inicio de una palabra. */
 const DEFAULT_RULES=[
@@ -89,6 +89,10 @@ const accById=id=>S.accounts.find(a=>a.id===id);
 const curOf=id=>{const a=S.accounts.find(x=>x.id===id);return a&&a.cur==='USD'?'USD':'ARS'};
 const accLabel=a=>a?((a.group&&a.group!==a.name?a.group+' · '+a.name:a.name)+(a.cur==='USD'&&!/US\$|dólar/i.test(a.name)?' (US$)':'')):'Cuenta eliminada';
 const ownerName=id=>{const o=S.owners.find(x=>x.id===id);return o?o.name:'Otro'};
+/* Dueños que se ofrecen en botones y selectores: los archivados no salen (salvo el que ya está elegido). */
+const liveOwners=keep=>S.owners.filter(o=>!o.archived||o.id===keep);
+/* Si toda la plata de una cuenta es de un solo dueño («Reserva Montonera»), devuelve ese dueño. */
+const soloOf=id=>{ const a=S.accounts.find(x=>x.id===id); return (a&&a.soloOwner&&S.owners.some(o=>o.id===a.soloOwner&&!o.archived))?a.soloOwner:''; };
 const catName=id=>{const c=S.cats.find(x=>x.id===id);return c?c.name:'Sin categorizar'};
 const cardName=id=>{const c=S.cards.find(x=>x.id===id);return c?c.name:'Tarjeta eliminada'};
 
@@ -238,9 +242,9 @@ function normalizeData(d,fresh){
   o.accounts=o.accounts.filter(a=>!(a.id==='mercado-pago-fondo'&&!a.initial&&!o.movs.some(m=>m.account===a.id||m.to===a.id)));
   o.owners=arr(d.owners).filter(x=>x&&str(x.id)&&str(x.name));
   if(!o.owners.length) o.owners=DEFAULT_OWNERS.map(x=>Object.assign({},x));
-  if(!o.owners.some(x=>x.id==='yo')) o.owners.unshift({id:'yo',name:'Gonza'});
+  if(!o.owners.some(x=>x.id==='yo')) o.owners.unshift({id:'yo',name:'Gonzalo'});
   if(mig4||fresh){
-    o.owners=o.owners.map(x=>(x.id==='yo'&&x.name==='Mío')?Object.assign({},x,{name:'Gonza'}):x);
+    o.owners=o.owners.map(x=>(x.id==='yo'&&x.name==='Mío')?Object.assign({},x,{name:'Gonzalo'}):x);
     DEFAULT_OWNERS.forEach(x=>{ if(!o.owners.some(y=>y.id===x.id||y.name.toLowerCase()===x.name.toLowerCase())) o.owners.push(Object.assign({},x)); });
   }
   o.cards=arr(d.cards).filter(x=>x&&str(x.id)&&str(x.name));
@@ -253,7 +257,7 @@ function normalizeData(d,fresh){
   o.stmts=arr(d.stmts).filter(x=>x&&str(x.id)&&str(x.card)&&str(x.period));
   o.exp=arr(d.exp).filter(x=>x&&str(x.id)&&str(x.date)&&typeof x.cents==='number'&&str(x.period));
   o.hlds=Array.isArray(d.hlds)?d.hlds.filter(x=>x&&str(x.id)&&str(x.name)).map(x=>Object.assign({initial:0,kind:'nom',cur:'USD',px:[]},x)):[];
-  o.claims=arr(d.claims).filter(x=>x&&str(x.id)&&str(x.from)&&str(x.to)&&typeof x.cents==='number');
+  o.claims=arr(d.claims).filter(x=>x&&str(x.id)&&str(x.from)&&str(x.to)&&typeof x.cents==='number').map(x=>str(x.date)&&x.date?x:Object.assign({},x,{date:todayStr()}));
   o.plans=arr(d.plans).filter(x=>x&&str(x.id)&&str(x.start)&&x.data&&typeof x.n==='number'&&typeof x.done==='number'&&typeof x.data.cents==='number'&&str(x.data.account));
   o.fixed=arr(d.fixed).filter(x=>x&&str(x.id)&&str(x.last)&&typeof x.day==='number'&&x.data&&typeof x.data.cents==='number'&&str(x.data.account));
   o.budgets=arr(d.budgets).filter(x=>x&&str(x.id)&&str(x.cat)&&typeof x.cents==='number');
@@ -681,21 +685,21 @@ function viewResumen(){
   for(const m of S.movs){ const c=curId[m.account]; if(m.type==='yield'&&c){ const v=ownerShare(m,who); if(m.date.startsWith(mp)) yM[c]+=v; if(m.date===today) yT[c]+=v; } }
   const nonz=o=>nonzeroOwners(o);
   const owLine=(o,c)=>{const l=nonz(o); return (!fo&&(l.length>=2||(l.length===1&&l[0].id!=='yo')))?'<div class="total-sub owners">'+l.map(x=>'<span>'+esc(x.name)+' '+amt(money(x.v,c),x.v<0?'neg':'')+'</span>').join('')+'</div>':'';};
-  const chips=S.owners.length>1?'<div class="chips" role="group" aria-label="De quién es la plata"><button class="chip" data-act="rown" data-id="" aria-pressed="'+(!fo)+'">Todo</button>'+S.owners.slice().sort((a,b)=>(b.id==='yo')-(a.id==='yo')).map(o=>'<button class="chip" data-act="rown" data-id="'+esc(o.id)+'" aria-pressed="'+(fo===o.id)+'">'+esc(o.name)+'</button>').join('')+'</div>':'';
+  const chips=liveOwners(S.rOwner).length>1?'<div class="chips" role="group" aria-label="De quién es la plata"><button class="chip" data-act="rown" data-id="" aria-pressed="'+(!fo)+'">Todo</button>'+liveOwners(S.rOwner).slice().sort((a,b)=>(b.id==='yo')-(a.id==='yo')).map(o=>'<button class="chip" data-act="rown" data-id="'+esc(o.id)+'" aria-pressed="'+(fo===o.id)+'">'+esc(o.name)+'</button>').join('')+'</div>':'';
   // avisos primero (sin recordatorios de actualizar saldos ni de cargar resúmenes: eso se hace a mano cuando uno quiere)
   let L='', X='';
-  if(!S.movs.length&&accs.every(a=>!a.initial)) L+='<div class="note"><strong>Para empezar, 3 pasos:</strong><ol class="steps"><li>Los botones de arriba (Gonza, Catequesis…) son los <em>dueños de la plata</em>: de quién es cada peso.</li><li>Cargá lo que tenés hoy en cada cuenta: tocá una cuenta (abajo, en <em>Tus cuentas</em>) y entrá a <em>Editar cuenta</em> para el saldo inicial.</li><li>Anotá cada movimiento con el botón <strong>+</strong>: escribilo en una línea, por ejemplo «super 15000 bbva».</li></ol></div>';
-  L+=(backupNote()||negNotice()||budgetNotice()||planReminder()||cardReminder());
+  if(!S.movs.length&&accs.every(a=>!a.initial)) L+='<div class="note"><strong>Para empezar, 3 pasos:</strong><ol class="steps"><li>Los botones de arriba (Gonza, Catequesis…) son los <em>dueños de la plata</em>: de quién es cada peso.</li><li>Cargá lo que tenés hoy en cada cuenta: tocá un banco o una cuenta (abajo, en <em>Tus cuentas</em>) y entrá a <em>Editar cuenta</em> para el saldo inicial.</li><li>Anotá cada movimiento con el botón <strong>+</strong>: escribilo en una línea, por ejemplo «super 15000 bbva».</li></ol></div>';
+  L+=(backupNote()||negNotice()||budgetNotice()||planReminder()||cardReminder())+preNotice();
   L+='<section class="total">'+chips+'<div class="eyebrow">Total en pesos</div><div class="big">'+amt(money(tot.ARS),tot.ARS<0?'neg':'')+'</div>';
   if(hasY) L+='<div class="stats"><div class="stat"><span class="small muted">Rendimiento hoy</span><b>'+amt(signed(yT.ARS),cls(yT.ARS))+'</b></div><div class="stat"><span class="small muted">Rendimiento del mes</span><b>'+amt(signed(yM.ARS),cls(yM.ARS))+'</b></div></div>';
-  L+=owLine(ot.ARS,'ARS')+'</section>';
+  L+=owLine(ot.ARS,'ARS')+'</section>'+commitCard(fo);
   if(showU){
     L+='<section class="usd-card"><div class="eyebrow">Total en dólares</div><div class="usd-fig">'+amt(money(tot.USD,'USD'),tot.USD<0?'neg':'')+'</div>'
       +(hasYU?'<div class="total-sub" style="margin-top:2px"><span>Rendimiento hoy '+amt(signed(yT.USD,'USD'),cls(yT.USD))+'</span><span>del mes '+amt(signed(yM.USD,'USD'),cls(yM.USD))+'</span></div>':'')+owLine(ot.USD,'USD')+'</section>';
   }
   {
     const DP=debtPairs().filter(p=>!fo||p.debtor===fo||p.creditor===fo);
-    if(DP.length) X+='<section class="note"><strong>Deudas entre dueños</strong>'+DP.slice(0,3).map(p=>'<div>'+esc(ownerName(p.debtor))+' le debe '+amt(money(p.cents,p.c))+' a '+esc(ownerName(p.creditor))+'</div>').join('')+'<a class="link" href="#deudas">Ver y devolver</a></section>';
+    if(DP.length) X+='<section class="note"><strong>Deudas entre dueños</strong>'+DP.slice(0,3).map(p=>'<div>'+esc(ownerName(p.debtor))+' le debe '+amt(money(p.cents,p.c))+' a '+esc(ownerName(p.creditor))+ageTag(p)+'</div>').join('')+'<a class="link" href="#deudas">Ver y devolver</a></section>';
   }
   {
     const IT=invTotals(fo);
@@ -807,6 +811,7 @@ function movRow(m,run,noDate){
   if(a&&a.kind==='card'&&m.type==='out') sub+=' · <span class="pill own">Tarjeta</span>';
   if(m.type==='out'&&m.cat) sub+=' · '+esc(catName(m.cat));
   if(m.ref) sub+=' · comp. '+esc(m.ref);
+  if(m.proj){ const pg=S.goals.find(x=>x.id===m.proj); if(pg) sub+=' · '+esc(pg.name); }
   if(xo) sub+=' · <span class="pill own">'+esc(ownerName(m.owner||'yo'))+' → '+esc(ownerName(m.toOwner))+'</span>';
   if(m.type==='out'&&m.for) sub+=' · <span class="pill own">Para '+Object.keys(m.for).map(k=>esc(ownerName(k))).join(', ')+'</span>';
   if(m.type==='yield'){
@@ -840,7 +845,7 @@ function viewMovs(){
     +'<div class="chips" role="group" aria-label="Tipo de movimiento">'+[['','Todos'],['out','Egresos'],['in','Ingresos'],['transfer','Transferencias'],['yield','Rendimientos']].map(c=>'<button class="chip" data-act="ftype" data-id="'+c[0]+'" aria-pressed="'+(S.fType===c[0])+'">'+c[1]+'</button>').join('')+'</div>'
     +'<details class="more-f"'+((S.fAcc||S.fOwner||S.fMonth)?' open':'')+'><summary>Más filtros</summary><div class="filters">'
     +'<select data-filter="fAcc" aria-label="Filtrar por cuenta">'+opt('','Todas las cuentas',!S.fAcc)+accsAll.map(a=>opt(a.id,accLabel(a),S.fAcc===a.id)).join('')+'</select>'
-    +'<select data-filter="fOwner" aria-label="Filtrar por dueño">'+opt('','Todos los dueños',!S.fOwner)+S.owners.map(o=>opt(o.id,o.name,S.fOwner===o.id)).join('')+'</select>'
+    +'<select data-filter="fOwner" aria-label="Filtrar por dueño">'+opt('','Todos los dueños',!S.fOwner)+liveOwners(S.fOwner).map(o=>opt(o.id,o.name,S.fOwner===o.id)).join('')+'</select>'
     +'<select data-filter="fMonth" aria-label="Filtrar por mes">'+opt('','Todos los meses',!S.fMonth)+months.map(mo=>opt(mo,monthLabel(mo),S.fMonth===mo)).join('')+'</select></div></details>'+plansBlock()+fixedBlock();
   if(!S.movs.length) return h+'<div class="empty"><h2>Sin movimientos todavía</h2><p>Los ingresos, egresos, transferencias y rendimientos que cargues aparecen acá, del más nuevo al más viejo.</p><button class="btn primary" data-act="mov-new">Cargar el primero</button></div>';
   if(!list.length) return h+'<div class="note">No hay movimientos con estos filtros.</div>';
@@ -946,7 +951,7 @@ function viewAnalisis(){
     else if(m.type==='in'){ if(fo&&(m.owner||'yo')!==fo) continue; r.i+=m.cents; }
     else if(m.type==='out'){ if(!fo&&isCard(m.account)) continue; const fm=m.for||{[m.owner||'yo']:m.cents}; r.o+=fo?(fm[fo]||0):m.cents; }
   }
-  h+='<section><h2 class="sec">Cuentas: ingresos y egresos</h2><div class="filters"><select data-filter="aOwner" aria-label="De quién es la plata">'+opt('','Todos los dueños',!fo)+S.owners.map(o=>opt(o.id,'Solo '+o.name,fo===o.id)).join('')+'</select></div>';
+  h+='<section><h2 class="sec">Cuentas: ingresos y egresos</h2><div class="filters"><select data-filter="aOwner" aria-label="De quién es la plata">'+opt('','Todos los dueños',!fo)+liveOwners(fo).map(o=>opt(o.id,'Solo '+o.name,fo===o.id)).join('')+'</select></div>';
   if(!S.movs.length) h+='<div class="note">Cuando cargues movimientos, acá vas a ver cuánto entra y cuánto sale cada mes.</div>';
   else{
     h+='<div class="legend"><span><i class="sw-pos"></i>Ingresos</span><span><i class="sw-neg"></i>Egresos</span></div><div class="chart-box">'+barsSvg(ms.map(monthShort),[{name:'Ingresos',cls:'bar-pos',vals:R.map(r=>r.ARS.i),fmt:v=>money(v)},{name:'Egresos',cls:'bar-neg',vals:R.map(r=>r.ARS.o),fmt:v=>money(v)}],'$','Ingresos y egresos de las cuentas por mes, en pesos')+'</div>';
@@ -962,15 +967,15 @@ function viewAnalisis(){
 function viewAjustes(){
   const all=S.accounts.slice().sort(byOrder), gm=new Map();
   all.forEach(a=>{const g=a.group||a.name; if(!gm.has(g)) gm.set(g,[]); gm.get(g).push(a);});
-  let h='<p class="muted" style="font-size:14px;margin:0 0 4px">Lo que se toca de vez en cuando: cuentas, dueños, tarjetas, categorías y la copia de seguridad (al final).</p><section><h2 class="sec">Cuentas</h2>';
+  let h='<p class="muted" style="font-size:14px;margin:0 0 4px">Lo que se toca de vez en cuando: cuentas, dueños, tarjetas, categorías y la copia de seguridad (arriba de todo, para que no se te pase).</p>'+backupBlock()+'<section><h2 class="sec">Cuentas</h2>';
   gm.forEach((list,g)=>{
     h+='<div class="grp"><div class="grp-h"><span class="eyebrow">'+esc(g)+'</span></div>'
       +list.map(a=>'<div class="acc acc-row"><div><div class="acc-name">'+esc(a.name)+(a.cur==='USD'&&!/US\$|dólar/i.test(a.name)?' (US$)':'')+'</div>'+(a.archived?'<div class="acc-meta"><span>Archivada</span></div>':'')+'</div><div class="acc-actions"><button class="btn sm ghost" data-act="acc-edit" data-id="'+esc(a.id)+'">Editar</button></div></div>').join('')
-      +'<div class="grp-add"><button class="link" data-act="acc-new" data-group="'+esc(g)+'">+ Agregar fondo, reserva u otra cuenta en '+esc(g)+'</button><button class="link" data-act="acc-new" data-group="'+esc(g)+'" data-cur="USD">+ Agregar cuenta en dólares en '+esc(g)+'</button></div></div>';
+      +'<div class="grp-add"><button class="link" data-act="acc-new" data-group="'+esc(g)+'">+ Agregar otra cuenta en '+esc(g)+'</button></div></div>';
   });
   h+='<div style="margin-top:10px"><button class="btn" data-act="acc-new">Nueva cuenta, banco o billetera</button></div></section>';
-  h+='<section><h2 class="sec">Dueños de la plata</h2><div class="list-head">'+S.owners.map(o=>'<div class="acc acc-row"><div><div class="acc-name">'+esc(o.name)+'</div></div><div class="acc-actions"><button class="btn sm ghost" data-act="owner-edit" data-id="'+esc(o.id)+'">Editar</button></div></div>').join('')+'</div><div style="margin-top:10px"><button class="btn ghost" data-act="owner-new">Agregar dueño</button></div></section>';
-  h+=cardsCatsBlock()+backupBlock()+(window.lockBlock?window.lockBlock():'');
+  h+='<section><h2 class="sec">Dueños de la plata</h2><div class="list-head">'+S.owners.map(o=>'<div class="acc acc-row"><div><div class="acc-name">'+esc(o.name)+(o.archived?' <span class="muted">(archivado)</span>':'')+'</div></div><div class="acc-actions"><button class="btn sm ghost" data-act="owner-edit" data-id="'+esc(o.id)+'">Editar</button></div></div>').join('')+'</div><div style="margin-top:10px"><button class="btn ghost" data-act="owner-new">Agregar dueño</button></div></section>';
+  h+=cardsCatsBlock()+(window.lockBlock?window.lockBlock():'');
   return h;
 }
 function viewRend(){
@@ -1008,9 +1013,9 @@ function viewRend(){
 
 /* ----- Tarjetas ----- */
 function cardsCatsBlock(){
-  let h='<section><h2 class="sec">Mis tarjetas</h2><div class="list-head">'
+  let h='<section><h2 class="sec">Mis tarjetas</h2><p class="muted" style="font-size:13px;margin:0 0 8px">Son las tarjetas para las que subís el resumen del mes. Cada una va con su cuenta «Tarjeta de crédito» de arriba.</p><div class="list-head">'
     +S.cards.map(c=>'<div class="acc acc-row"><div><div class="acc-name">'+esc(c.name)+'</div></div><div class="acc-actions" style="margin:0"><button class="btn sm ghost" data-act="card-edit" data-id="'+esc(c.id)+'">Editar</button></div></div>').join('')
-    +'</div><div style="margin-top:10px"><button class="btn ghost" data-act="card-new">Agregar tarjeta</button></div></section>';
+    +'</div>'+((!S.cards.length||S.accounts.some(x=>x.kind==='card'&&!x.archived&&!S.cards.some(c=>c.account===x.id)))?'<div style="margin-top:10px"><button class="btn ghost" data-act="card-new">Agregar tarjeta</button></div>':'<p class="muted" style="font-size:13px;margin:8px 0 0">Para sumar otra tarjeta, creá primero una cuenta «Tarjeta de crédito» arriba (tildando «Es una tarjeta de crédito»).</p>')+'</section>';
   h+='<section><h2 class="sec">Categorías</h2><div class="chips">'+S.cats.map(c=>'<button class="chip" data-act="cat-edit" data-id="'+esc(c.id)+'" aria-pressed="false">'+esc(c.name)+'</button>').join('')+'</div>'
     +'<div style="margin-top:10px"><button class="btn ghost" data-act="cat-new">Agregar categoría</button></div>'
     +'<p class="muted" style="font-size:13px;margin:8px 0 0">La app aprende: cuando cambiás la categoría de un consumo, la usa para los próximos consumos del mismo comercio.</p></section>';
@@ -1031,7 +1036,7 @@ function mgmtBlock(){
 }
 function viewTarj(){
   if(!S.cards.length) return '<div class="empty"><h2>Cargá tus tarjetas</h2><p>Agregá tus tarjetas de crédito y subí los resúmenes para ver en qué se va la plata.</p><p class="hint">Los consumos con tarjeta se cargan subiendo el resumen del mes (el PDF), o a mano como egreso desde la cuenta «Tarjeta de crédito».</p><button class="btn primary" data-act="card-new">Agregar tarjeta</button></div>';
-  let h='<div class="actions"><button class="btn primary" data-act="stmt-new">Cargar resumen</button><a class="btn ghost" href="#ajustes" style="text-decoration:none;display:inline-flex;align-items:center">Editar tarjetas y categorías</a></div>';
+  let h='<div class="actions"><button class="btn primary" data-act="stmt-new">Cargar resumen</button><a class="btn ghost" href="#ajustes" style="text-decoration:none;display:inline-flex;align-items:center">Editar tarjetas y categorías</a></div>'+prePendBlock();
   if(!S.exp.length) return h+'<div class="note">Todavía no cargaste ningún resumen. Tocá <strong>Cargar resumen</strong>, pegá el texto del PDF y revisá los consumos.</div>'+mgmtBlock();
   const periods=Array.from(new Set(S.exp.map(e=>e.period))).sort().reverse();
   if(S.xPeriod!=='all'&&periods.indexOf(S.xPeriod)<0) S.xPeriod=periods[0];
@@ -1121,7 +1126,7 @@ function viewInv(){
   const cv=m=>fo?ownerShare(m,fo):m.cents;
   const sum=l=>l.reduce((s,m)=>s+cv(m),0);
   let h='';
-  if(S.owners.length>1) h+='<div class="chips" role="group" aria-label="De quién son">'+S.owners.slice().sort((a,b)=>(b.id==='yo')-(a.id==='yo')).map(o=>'<button class="chip" data-act="iown" data-id="'+esc(o.id)+'" aria-pressed="'+(fo===o.id)+'">'+esc(o.name)+'</button>').join('')+'<button class="chip" data-act="iown" data-id="" aria-pressed="'+(!fo)+'">Todo</button></div>';
+  if(liveOwners(S.iOwner).length>1) h+='<div class="chips" role="group" aria-label="De quién son">'+liveOwners(S.iOwner).slice().sort((a,b)=>(b.id==='yo')-(a.id==='yo')).map(o=>'<button class="chip" data-act="iown" data-id="'+esc(o.id)+'" aria-pressed="'+(fo===o.id)+'">'+esc(o.name)+'</button>').join('')+'<button class="chip" data-act="iown" data-id="" aria-pressed="'+(!fo)+'">Todo</button></div>';
   const T=invTotals(fo), funds=S.hlds.filter(x=>x.kind==='fci');
   if(funds.length){
     h+='<section class="total"><div class="eyebrow">Cuotapartes valuadas</div><div class="big">'+amt(money(T.ARS))+'</div>'
@@ -1293,7 +1298,7 @@ function viewInforme(){
   const wholeMonth=st.from.slice(8)==='01'&&st.to===monthEnd(st.from.slice(0,7))&&st.from.slice(0,7)===st.to.slice(0,7);
   const ym=st.from.slice(0,7), closed=wholeMonth&&isClosed(st.from);
   let h='<p class="an-note">Para rendir cuentas: cuánto tenía, cuánto entró, en qué se gastó y cuánto queda, de un dueño y en un período. Solo cuentas en pesos: no entran las cuentas en dólares ni los consumos de los resúmenes de tarjeta (sí lo que otro dueño gastó para este dueño con tarjeta, en el bloque «En qué se gastó en nombre de…»).</p>';
-  h+='<div class="filters inf"><select data-filter="iOwnerR" aria-label="Dueño">'+S.owners.map(x=>opt(x.id,x.name,x.id===st.o)).join('')+'</select>'
+  h+='<div class="filters inf"><select data-filter="iOwnerR" aria-label="Dueño">'+S.owners.map(x=>opt(x.id,x.name+(x.archived?' (archivado)':''),x.id===st.o)).join('')+'</select>'
     +'<label class="small muted" style="display:grid;gap:2px">Desde<input type="date" data-filter="iFrom" value="'+esc(st.from)+'"></label>'
     +'<label class="small muted" style="display:grid;gap:2px">Hasta<input type="date" data-filter="iTo" value="'+esc(st.to)+'"></label></div>';
   const row=(t,v,cls,sub)=>'<div class="mov"><div><div class="mov-t">'+t+'</div>'+(sub?'<div class="mov-s">'+sub+'</div>':'')+'</div>'+amt(signed(v),cls)+'</div>';
@@ -1305,10 +1310,11 @@ function viewInforme(){
     +(B.tra?row('Pasó de o a otros dueños',B.tra,B.tra<0?'neg':'pos'):'')+(B.otr?row('Otros movimientos',B.otr,B.otr<0?'neg':'pos'):'')
     +'<div class="mov"><div><div class="mov-t"><b>Saldo al '+esc(fmtDate(st.to))+'</b></div></div>'+amt(money(D.close))+'</div></div>';
   if(D.benTot) h+='<h2 class="sec">En qué se gastó en nombre de '+esc(ownerName(st.o))+'</h2><div class="list-head">'+Object.keys(D.ben).map(k=>[k,D.ben[k]]).sort((a,b)=>b[1]-a[1]).map(x=>'<div class="mov"><div><div class="mov-t">'+esc(catName(x[0]))+'</div></div>'+amt(money(x[1]))+'</div>').join('')+'<div class="mov"><div><div class="mov-t"><b>Total gastado para '+esc(ownerName(st.o))+'</b></div>'+(D.benOtros?'<div class="mov-s">De eso, lo pagó otro dueño: '+money(D.benOtros)+'</div>':'')+'</div>'+amt(money(D.benTot))+'</div></div>';
-  if(D.debts.length) h+='<section class="note"><strong>Deudas pendientes hoy</strong> (no a la fecha del informe)'+D.debts.map(p=>'<div>'+esc(ownerName(p.debtor))+' le debe '+amt(money(p.cents,p.c))+' a '+esc(ownerName(p.creditor))+'</div>').join('')+'</section>';
+  { const cm=commitData(st.o); if(cm.F>0) h+='<section class="note"><strong>Cuotas por venir de '+esc(ownerName(st.o))+':</strong> '+amt(money(cm.F))+' en '+cm.nC+' cuota(s)'+(cm.months.length?' ('+cm.months.map(m=>esc(monthShort(m[0]))+' '+money(m[1])).join(', ')+')':'')+'. Es plata que tiene que quedar disponible, además de las deudas.</section>'; }
+  if(D.debts.length) h+='<section class="note"><strong>Deudas pendientes hoy</strong> (no a la fecha del informe)'+D.debts.map(p=>'<div>'+esc(ownerName(p.debtor))+' le debe '+amt(money(p.cents,p.c))+' a '+esc(ownerName(p.creditor))+esc(ageTxt(p))+'</div>').join('')+'<div class="small muted" style="margin-top:6px">El saldo de arriba no descuenta estas deudas.</div></section>';
   h+='<h2 class="sec">Detalle ('+D.rows.length+')</h2>';
   h+=D.rows.length?'<div class="list-head">'+D.rows.map(r=>'<div class="mov"><div><div class="mov-t">'+esc(r.note)+'</div><div class="mov-s">'+esc(fmtDate(r.date))+' · '+esc(r.acc)+(r.cat?' · '+esc(r.cat):'')+(r.ref?' · comp. '+esc(r.ref):'')+'</div></div>'+amt(signed(r.v),r.v<0?'neg':'pos')+'</div>').join('')+'</div>':'<div class="note">No hay movimientos de este dueño en el período.</div>';
-  h+='<div class="actions"><button class="btn primary" data-act="inf-print">Imprimir o guardar PDF</button><button class="btn" data-act="inf-csv">Pasar a Excel</button></div>';
+  h+='<div class="actions"><button class="btn primary" data-act="inf-print">Imprimir o guardar PDF</button><button class="btn" data-act="inf-csv">Pasar a Excel</button><button class="btn" data-act="inf-wa">Mandar resumen por WhatsApp</button></div>';
   if(wholeMonth){
     const ended=ym<todayStr().slice(0,7);
     h+='<section class="note">'+(closed?'<strong>'+esc(monthLabel(ym))+' está cerrado:</strong> no se puede agregar, cambiar ni borrar nada de ese mes. <button class="btn sm" data-act="mes-open" data-id="'+ym+'">Reabrir el mes</button>'
@@ -1338,9 +1344,10 @@ function infPrint(){
   const sum=tr('Saldo al '+fmtDate(addDays(st.from,-1)),D.open)+(B.ing?tr('Ingresos',B.ing):'')+(B.yld?tr('Rendimientos',B.yld):'')
     +Object.keys(B.out).map(k=>tr('Gastos · '+catName(k),B.out[k])).join('')+(B.tra?tr('Pasó de o a otros dueños',B.tra):'')+(B.otr?tr('Otros movimientos',B.otr):'')+tr('Saldo al '+fmtDate(st.to),D.close,true);
   const det=D.rows.map(r=>'<tr><td>'+esc(fmtDate(r.date))+'</td><td>'+esc(r.note)+'</td><td>'+esc(r.cat)+'</td><td>'+esc(r.ref)+'</td><td class="r">'+money(r.v)+'</td></tr>').join('');
+  const cmx=commitData(st.o), cmHtml=cmx.F>0?'<h2>Cuotas por venir</h2><p>'+money(cmx.F)+' en '+cmx.nC+' cuota(s)'+(cmx.months.length?': '+cmx.months.map(m=>esc(monthShort(m[0]))+' '+money(m[1])).join(', '):'')+'. Plata que tiene que quedar disponible, además de las deudas.</p>':'';
   const benHtml=D.benTot?'<h2>En qué se gastó en nombre de '+esc(ownerName(st.o))+'</h2><table>'+Object.keys(D.ben).map(k=>tr(catName(k),D.ben[k])).join('')+tr('Total gastado para '+ownerName(st.o),D.benTot,true)+(D.benOtros?tr('De eso, lo pagó otro dueño',D.benOtros):'')+'</table>':'';
-  const debts=D.debts.map(p=>'<li>'+esc(ownerName(p.debtor))+' le debe '+money(p.cents,p.c)+' a '+esc(ownerName(p.creditor))+'</li>').join('');
-  const html='<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe de '+esc(ownerName(st.o))+'</title><style>@page{size:A4;margin:16mm}body{font:13px/1.4 Arial,sans-serif;color:#111}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:18px 0 6px}p{margin:0 0 12px;color:#444}table{width:100%;border-collapse:collapse}td,th{padding:5px 6px;border-bottom:1px solid #ddd;text-align:left;vertical-align:top}th{background:#f1f3f6}.r{text-align:right;white-space:nowrap}tr.b td{font-weight:700;border-top:2px solid #111}</style></head><body><h1>Informe de '+esc(ownerName(st.o))+'</h1><p>Del '+esc(fmtDate(st.from))+' al '+esc(fmtDate(st.to))+' · cuentas en pesos · emitido el '+esc(fmtDate(todayStr()))+'</p><table>'+sum+'</table>'+benHtml+(debts?'<h2>Deudas pendientes hoy</h2><ul>'+debts+'</ul>':'')+'<h2>Detalle</h2><table><tr><th>Fecha</th><th>Detalle</th><th>Categoría</th><th>Comprobante</th><th class="r">Importe</th></tr>'+det+'</table></body></html>';
+  const debts=D.debts.map(p=>'<li>'+esc(ownerName(p.debtor))+' le debe '+money(p.cents,p.c)+' a '+esc(ownerName(p.creditor))+esc(ageTxt(p))+'</li>').join('');
+  const html='<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe de '+esc(ownerName(st.o))+'</title><style>@page{size:A4;margin:16mm}body{font:13px/1.4 Arial,sans-serif;color:#111}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:18px 0 6px}p{margin:0 0 12px;color:#444}table{width:100%;border-collapse:collapse}td,th{padding:5px 6px;border-bottom:1px solid #ddd;text-align:left;vertical-align:top}th{background:#f1f3f6}.r{text-align:right;white-space:nowrap}tr.b td{font-weight:700;border-top:2px solid #111}</style></head><body><h1>Informe de '+esc(ownerName(st.o))+'</h1><p>Del '+esc(fmtDate(st.from))+' al '+esc(fmtDate(st.to))+' · cuentas en pesos · emitido el '+esc(fmtDate(todayStr()))+'</p><table>'+sum+'</table>'+benHtml+cmHtml+(debts?'<h2>Deudas pendientes hoy</h2><ul>'+debts+'</ul>':'')+'<h2>Detalle</h2><table><tr><th>Fecha</th><th>Detalle</th><th>Categoría</th><th>Comprobante</th><th class="r">Importe</th></tr>'+det+'</table></body></html>';
   const w=window.open('','_blank'); if(!w){ toast('El navegador bloqueó la ventana. Permitila e intentá de nuevo.'); return; }
   w.document.open(); w.document.write(html); w.document.close(); setTimeout(()=>{ try{ w.focus(); w.print(); }catch(_){} },400);
 }
@@ -1366,11 +1373,11 @@ function viewMetas(){
     return '<button class="mov mrow-btn" data-act="bg-edit" data-id="'+esc(b.id)+'"><div><div class="mov-t">'+esc(catName(b.cat))+(b.owner?' · '+esc(ownerName(b.owner)):'')+'</div><div class="mov-s">Gastaste '+amt(money(sp))+' de '+amt(money(b.cents))+' ('+Math.round(pc*100)+'%)'+(sp>b.cents?' · <b class="neg">Te pasaste '+money(sp-b.cents)+'</b>':'')+'</div><div class="pbar'+(pc>1?' over':'')+'"><i style="width:'+Math.min(100,Math.round(pc*100))+'%"></i></div></div></button>';
   }).join('')+'</div>':'<div class="note">Todavía no hay presupuestos.</div>';
   h+='<div class="actions"><button class="btn" data-act="bg-new">Agregar presupuesto</button></div></section>';
-  h+='<section><h2 class="sec">Metas y proyectos</h2><p class="an-note">Una meta de plata para un dueño: por ejemplo, lo que tiene que juntar un grupo para una misión o un retiro. Se compara con la plata que ese dueño tiene hoy en cuentas en pesos.</p>';
+  h+='<section><h2 class="sec">Metas y proyectos</h2><p class="an-note">Una meta de plata para un dueño: por ejemplo, lo que tiene que juntar un grupo para una misión o un retiro. Si anotás los movimientos con ese <em>Proyecto</em> (en «Más opciones» del formulario), cuenta lo que entró y lo que se gastó en el proyecto; si no, se compara con la plata que ese dueño tiene hoy en cuentas en pesos.</p>';
   h+=(S.goals||[]).length?'<div class="list-head">'+S.goals.map(g=>{
-    const now=goalNow(g), pc=g.target>0?Math.max(0,now)/g.target:0, falta=Math.max(0,g.target-now);
+    const pj=projTotals(g), conProy=pj.i>0||pj.o>0, now=conProy?pj.i-pj.o:goalNow(g), pc=g.target>0?Math.max(0,now)/g.target:0, falta=Math.max(0,g.target-now);
     const dl=g.date?Math.ceil((new Date(g.date+'T12:00:00')-new Date(todayStr()+'T12:00:00'))/864e5):null;
-    return '<button class="mov mrow-btn" data-act="gl-edit" data-id="'+esc(g.id)+'"><div><div class="mov-t">'+esc(g.name)+' · '+esc(ownerName(g.owner))+'</div><div class="mov-s">Juntó '+amt(money(Math.max(0,now)))+' de '+amt(money(g.target))+' ('+Math.round(pc*100)+'%) · falta '+amt(money(falta))+(dl!=null?' · '+(dl>=0?'quedan '+dl+' días':'pasó hace '+(-dl)+' días'):'')+'</div><div class="pbar"><i style="width:'+Math.min(100,Math.round(pc*100))+'%"></i></div></div></button>';
+    return '<button class="mov mrow-btn" data-act="gl-edit" data-id="'+esc(g.id)+'"><div><div class="mov-t">'+esc(g.name)+' · '+esc(ownerName(g.owner))+'</div><div class="mov-s">'+(conProy?'Entró '+amt(money(pj.i))+' · se gastó '+amt(money(pj.o))+' · en caja ':'Juntó ')+amt(money(Math.max(0,now)))+' de '+amt(money(g.target))+' ('+Math.round(pc*100)+'%) · falta '+amt(money(falta))+(dl!=null?' · '+(dl>=0?'quedan '+dl+' días':'pasó hace '+(-dl)+' días'):'')+'</div><div class="pbar"><i style="width:'+Math.min(100,Math.round(pc*100))+'%"></i></div>'+(pj.otros?'<div class="mov-s" style="margin-top:4px"><b>'+pj.otros+' movimiento(s) con este proyecto no cuentan</b>: son de otro dueño, en dólares o devoluciones.</div>':'')+'</div></button><div class="mov-actions" style="padding:0 14px 10px"><button class="link" data-act="gl-det" data-id="'+esc(g.id)+'">Ver detalle, imprimir o pasar a Excel</button></div>';
   }).join('')+'</div>':'<div class="note">Todavía no hay metas.</div>';
   h+='<div class="actions"><button class="btn" data-act="gl-new">Agregar meta</button></div></section>';
   return h;
@@ -1379,7 +1386,7 @@ function budgetModal(b){
   const cats=S.cats.filter(c=>c.id!=='sin');
   return '<form id="bgform" class="sheet" novalidate><h2>'+(b?'Editar presupuesto':'Nuevo presupuesto')+'</h2>'
     +'<label for="bg-cat">Categoría</label><select id="bg-cat">'+cats.map(c=>opt(c.id,c.name,b&&b.cat===c.id)).join('')+'</select>'
-    +'<label for="bg-own">De quién</label><select id="bg-own">'+opt('','Todos los dueños',!b||!b.owner)+S.owners.map(o=>opt(o.id,o.name,b&&b.owner===o.id)).join('')+'</select>'
+    +'<label for="bg-own">De quién</label><select id="bg-own">'+opt('','Todos los dueños',!b||!b.owner)+liveOwners(b&&b.owner).map(o=>opt(o.id,o.name,b&&b.owner===o.id)).join('')+'</select>'
     +'<label for="bg-amt">Tope por mes ($)</label><input id="bg-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(b?centsToInput(b.cents):'')+'" data-focus>'
     +'<p class="err" id="bg-err" role="alert"></p><div class="sheet-actions">'+(b?'<button type="button" class="btn danger" data-act="bg-del" data-id="'+esc(b.id)+'">Borrar</button>':'')+'<button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary">Guardar</button></div></form>';
 }
@@ -1393,7 +1400,7 @@ function saveBudget(){
 function goalModal(g){
   return '<form id="glform" class="sheet" novalidate><h2>'+(g?'Editar meta':'Nueva meta')+'</h2>'
     +'<label for="gl-name">Nombre</label><input id="gl-name" maxlength="60" autocomplete="off" placeholder="Misión 2027" value="'+esc(g?g.name:'')+'" data-focus>'
-    +'<label for="gl-own">De quién es la plata</label><select id="gl-own">'+S.owners.map(o=>opt(o.id,o.name,g?g.owner===o.id:false)).join('')+'</select>'
+    +'<label for="gl-own">De quién es la plata</label><select id="gl-own">'+liveOwners(g&&g.owner).map(o=>opt(o.id,o.name,g?g.owner===o.id:false)).join('')+'</select>'
     +'<label for="gl-amt">Cuánto hay que juntar ($)</label><input id="gl-amt" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(g?centsToInput(g.target):'')+'">'
     +'<label for="gl-date">Para cuándo (opcional)</label><input id="gl-date" type="date" value="'+esc(g&&g.date?g.date:'')+'">'
     +'<p class="err" id="gl-err" role="alert"></p><div class="sheet-actions">'+(g?'<button type="button" class="btn danger" data-act="gl-del" data-id="'+esc(g.id)+'">Borrar</button>':'')+'<button type="button" class="btn" data-act="close">Cancelar</button><button type="submit" class="btn primary">Guardar</button></div></form>';
@@ -1444,29 +1451,181 @@ function extraAct(act,id){
   switch(act){
     case 'inf-print': infPrint(); return true;
     case 'inf-csv': infCsv(); return true;
+    case 'inf-wa': infWa(); return true;
     case 'mes-ask': S.confirmMes=id; render(); return true;
     case 'mes-no': S.confirmMes=''; render(); return true;
     case 'mes-close': if(id>=todayStr().slice(0,7)){ toast('Ese mes todavía no terminó.'); return true; } if(S.closed.indexOf(id)<0) S.closed.push(id); S.confirmMes=''; persist(); render(); toast('Mes cerrado'); return true;
     case 'mes-open': S.closed=S.closed.filter(x=>x!==id); persist(); render(); toast('Mes reabierto'); return true;
     case 'bg-new': openModal('budget',{b:null}); return true;
     case 'bg-edit': openModal('budget',{b:S.budgets.find(x=>x.id===id)||null}); return true;
-    case 'bg-del': S.budgets=S.budgets.filter(x=>x.id!==id); persist(); closeModal(); render(); toast('Presupuesto borrado'); return true;
+    case 'bg-del': if(!S.modal||!S.modal.confirmDel){ if(S.modal) S.modal.confirmDel=true; const bt=document.querySelector('[data-act=bg-del]'); if(bt) bt.textContent='Tocá otra vez para borrar'; return true; } S.budgets=S.budgets.filter(x=>x.id!==id); persist(); closeModal(); render(); toast('Presupuesto borrado'); return true;
+    case 'gl-det': openModal('projdet',{g:S.goals.find(x=>x.id===id)||null}); return true;
+    case 'gl-csv': { const g=S.goals.find(x=>x.id===id); if(g) projCsv(g); return true; }
+    case 'gl-pdf': { const g=S.goals.find(x=>x.id===id); if(g) projPrint(g); return true; }
     case 'gl-new': openModal('goal',{g:null}); return true;
     case 'gl-edit': openModal('goal',{g:S.goals.find(x=>x.id===id)||null}); return true;
-    case 'gl-del': S.goals=S.goals.filter(x=>x.id!==id); persist(); closeModal(); render(); toast('Meta borrada'); return true;
+    case 'gl-del': if(!S.modal||!S.modal.confirmDel){ if(S.modal) S.modal.confirmDel=true; const bt=document.querySelector('[data-act=gl-del]'); if(bt) bt.textContent='Tocá otra vez para borrar'; return true; } S.goals=S.goals.filter(x=>x.id!==id); persist(); closeModal(); render(); toast('Meta borrada'); return true;
     case 'fx-edit': openModal('fixed',{f:S.fixed.find(x=>x.id===id)||null}); return true;
+    case 'owner-arch': { const o=S.owners.find(x=>x.id===id); if(!o) return true; if(o.archived){ o.archived=false; persist(); closeModal(); render(); toast('Dueño reactivado'); return true; } const why=ownerBusy(id); if(why){ toast('No se puede archivar: '+why+'.'); return true; } o.archived=true; if(S.rOwner===id) S.rOwner='yo'; persist(); closeModal(); render(); toast('Dueño archivado'); return true; }
     case 'fx-ask': S.confirmFx=id; render(); return true;
     case 'fx-no': S.confirmFx=''; render(); return true;
     case 'fx-yes': S.fixed=S.fixed.filter(x=>x.id!==id); S.confirmFx=''; persist(); render(); toast('Ya no se repite'); return true;
   }
   return false;
 }
+
+/* ----- Tanda 4 ----- */
+/* Tarjetas: si hay cuentas de tarjeta y todavía no hay «tarjetas» para subir resúmenes, se crean enlazadas a esas cuentas. */
+function ensureCards(){
+  if(S.cards.length) return false;
+  const cc=S.accounts.filter(a=>a.kind==='card'&&!a.archived); if(!cc.length) return false;
+  cc.forEach(a=>S.cards.push({id:slug(accLabel(a))+'-'+Math.random().toString(36).slice(2,6),name:accLabel(a),account:a.id}));
+  return true;
+}
+/* Antigüedad de una deuda: lo que se devuelve se descuenta primero de lo más viejo; devuelve cuántos días tiene lo más viejo que sigue sin devolverse. */
+function debtAge(p){
+  const L=p.items.map(it=>({d:it.m.date,v:it.a===p.debtor?it.v:-it.v})).sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0), Q=[];
+  L.forEach(x=>{ if(x.v>0) Q.push({d:x.d,v:x.v}); else { let r=-x.v; while(r>0&&Q.length){ const t=Math.min(r,Q[0].v); Q[0].v-=t; r-=t; if(Q[0].v<=0) Q.shift(); } } });
+  return Q.length?daysBetween(Q[0].d,todayStr()):0;
+}
+const diasTxt=d=>d+(d===1?' día':' días');
+function ageTxt(p){ const d=debtAge(p); return d>=1?' (desde hace '+diasTxt(d)+')':''; }
+function ageTag(p){ const d=debtAge(p); if(d<1) return ''; return ' · '+(d>60?'<b class="neg">hace '+diasTxt(d)+'</b>':'hace '+diasTxt(d)); }
+/* Resumen del informe en texto, para mandarlo por WhatsApp. */
+function infWa(){
+  const st=infState(), D=informeData(st.o,st.from,st.to), B=D.B, n=v=>money(v);
+  const L=['*Informe de '+ownerName(st.o)+'*','Del '+fmtDate(st.from)+' al '+fmtDate(st.to),'','Saldo inicial: '+n(D.open)];
+  if(B.ing) L.push('Ingresos: '+n(B.ing)); if(B.yld) L.push('Rendimientos: '+n(B.yld));
+  Object.keys(B.out).map(k=>[k,B.out[k]]).sort((a,b)=>a[1]-b[1]).forEach(x=>L.push('Gastos · '+catName(x[0])+': '+n(x[1])));
+  if(B.tra) L.push('Con otros dueños: '+n(B.tra)); if(B.otr) L.push('Otros movimientos: '+n(B.otr));
+  L.push('*Saldo final: '+n(D.close)+'*');
+  if(D.benTot){ L.push('','En nombre de '+ownerName(st.o)+' se gastó: '+n(D.benTot)+(D.benOtros?' (pagó otro dueño: '+n(D.benOtros)+')':'')); }
+  { const cm=commitData(st.o); if(cm.F>0) L.push('','Cuotas por venir: '+n(cm.F)+' ('+cm.nC+')'+(cm.months.length?' · '+cm.months.map(m=>monthShort(m[0])+' '+n(m[1])).join(', '):'')); }
+  if(D.debts.length) L.push('');
+  D.debts.forEach(p=>L.push(ownerName(p.debtor)+' le debe '+money(p.cents,p.c)+' a '+ownerName(p.creditor)+ageTxt(p)));
+  L.push('','(Resumen. El detalle con comprobantes está en el PDF.)');
+  const w=window.open('https://wa.me/?text='+encodeURIComponent(L.join('\n')),'_blank'); if(!w) toast('El navegador bloqueó la ventana. Permitila e intentá de nuevo.');
+}
+function projTotals(g){ let i=0,o=0,otros=0; S.movs.forEach(m=>{ if(m.proj!==g.id) return; if(curOf(m.account)!=='ARS'){ otros++; return; } if(m.type==='in'){ if((m.owner||'yo')===g.owner&&!m.repayFrom) i+=m.cents; else otros++; } else if(m.type==='out'){ const v=benShare(m,g.owner); if(v) o+=v; else otros++; } }); return {i:i,o:o,otros:otros}; }
+function projRows(g){
+  return S.movs.filter(m=>m.proj===g.id&&curOf(m.account)==='ARS'&&(m.type==='in'||m.type==='out')).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0).map(m=>({date:m.date,note:m.note||typeLabel(m.type),cat:m.type==='out'?catName(m.cat||'sin'):'',ref:m.ref||'',own:ownerName(m.owner||'yo'),v:m.type==='in'?m.cents:-m.cents}));
+}
+function projModal(g){
+  if(!g) return '<div class="sheet"><h2>Proyecto</h2><p class="hint">Ya no existe.</p><div class="sheet-actions"><button type="button" class="btn" data-act="close">Cerrar</button></div></div>';
+  const R=projRows(g), t=projTotals(g);
+  return '<div class="sheet"><h2>'+esc(g.name)+'</h2><p class="hint">Entró '+money(t.i)+' · se gastó '+money(t.o)+' · en caja '+money(t.i-t.o)+' de '+money(g.target)+'. Solo cuentas en pesos.</p>'
+    +'<div class="list-head" style="max-height:46vh;overflow:auto">'+(R.length?R.map(r=>'<div class="mov"><div><div class="mov-t">'+esc(r.note)+'</div><div class="mov-s">'+esc(fmtDate(r.date))+' · '+esc(r.own)+(r.cat?' · '+esc(r.cat):'')+(r.ref?' · comp. '+esc(r.ref):'')+'</div></div>'+amt(signed(r.v),r.v<0?'neg':'pos')+'</div>').join(''):'<div class="note">Todavía no hay movimientos con este proyecto.</div>')+'</div>'
+    +'<div class="sheet-actions"><button type="button" class="btn" data-act="gl-csv" data-id="'+esc(g.id)+'">Excel</button><button type="button" class="btn" data-act="gl-pdf" data-id="'+esc(g.id)+'">Imprimir o PDF</button><button type="button" class="btn primary" data-act="close">Cerrar</button></div></div>';
+}
+function projCsv(g){
+  const q=x=>'"'+String(x).replace(/"/g,'""')+'"', n=v=>(v/100).toFixed(2).replace('.',','), R=projRows(g), t=projTotals(g);
+  const L=[['Proyecto',g.name],['Entró','',n(t.i)],['Se gastó','',n(t.o)],['En caja','',n(t.i-t.o)],[],['Fecha','Detalle','Importe','Dueño','Categoría','Comprobante']].concat(R.map(r=>[r.date,r.note,n(r.v),r.own,r.cat,r.ref]));
+  const csv='\ufeff'+L.map(r=>r.map(q).join(';')).join('\r\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  const a=document.createElement('a'); a.href=url; a.download='proyecto-'+slug(g.name)+'-'+todayStr()+'.csv';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000); toast('Excel descargado');
+}
+function projPrint(g){
+  const R=projRows(g), t=projTotals(g);
+  const det=R.map(r=>'<tr><td>'+esc(fmtDate(r.date))+'</td><td>'+esc(r.note)+'</td><td>'+esc(r.own)+'</td><td>'+esc(r.cat)+'</td><td>'+esc(r.ref)+'</td><td class="r">'+money(r.v)+'</td></tr>').join('');
+  const html='<!doctype html><html lang="es"><head><meta charset="utf-8"><title>'+esc(g.name)+'</title><style>@page{size:A4;margin:16mm}body{font:13px/1.4 Arial,sans-serif;color:#111}h1{font-size:20px;margin:0 0 4px}p{margin:0 0 12px;color:#444}table{width:100%;border-collapse:collapse}td,th{padding:5px 6px;border-bottom:1px solid #ddd;text-align:left;vertical-align:top}th{background:#f1f3f6}.r{text-align:right;white-space:nowrap}</style></head><body><h1>'+esc(g.name)+'</h1><p>Entró '+money(t.i)+' · se gastó '+money(t.o)+' · en caja '+money(t.i-t.o)+' de '+money(g.target)+' · emitido el '+esc(fmtDate(todayStr()))+'</p><table><tr><th>Fecha</th><th>Detalle</th><th>Dueño</th><th>Categoría</th><th>Comprobante</th><th class="r">Importe</th></tr>'+det+'</table></body></html>';
+  const w=window.open('','_blank'); if(!w){ toast('El navegador bloqueó la ventana. Permitila e intentá de nuevo.'); return; }
+  w.document.open(); w.document.write(html); w.document.close(); setTimeout(()=>{ try{ w.focus(); w.print(); }catch(_){} },400);
+}
+
+/* ----- Plata comprometida: cuotas por venir + deuda de hoy, por dueño ----- */
+function commitData(o){
+  const mon={}; let F=0, nC=0;
+  (S.plans||[]).forEach(p=>{
+    for(let k=p.done+1;k<=p.n;k++){
+      const cq=planCuota(p,k); let v;
+      if(p.data.for) v=(p.total!=null?allocate(cq,p.data.for):p.data.for)[o]||0; else v=(p.data.owner||'yo')===o?cq:0;
+      if(!v||curOf(p.data.account)!=='ARS') continue;
+      const ym=planDate(p.start,k-1).slice(0,7); mon[ym]=(mon[ym]||0)+v; F+=v; nC++;
+    }
+  });
+  let D=0; debtPairs().forEach(p=>{ if(p.debtor===o&&p.c==='ARS') D+=p.cents; });
+  let have=0; arsAccs().forEach(a=>{ have+=(ownerBalances(a)[o]||0); });
+  return {F:F,nC:nC,D:D,have:have,libre:have-D-F,months:Object.keys(mon).sort().map(k=>[k,mon[k]])};
+}
+function commitCard(fo){
+  if(!fo) return '';
+  const c=commitData(fo); if(!(c.F>0||c.D>0)) return '';
+  let h='<section class="usd-card"><div class="eyebrow">Comprometido para pagar · '+esc(ownerName(fo))+'</div><div class="usd-fig">'+amt(money(c.D+c.F))+'</div>';
+  h+='<div class="total-sub">'+(c.D?'<span>Deuda de hoy '+amt(money(c.D))+'</span>':'')+(c.F?'<span>Cuotas por venir '+amt(money(c.F))+' ('+c.nC+')</span>':'')+'</div>';
+  h+='<div class="total-sub" style="margin-top:6px"><span>Plata de '+esc(ownerName(fo))+' '+amt(money(c.have))+'</span><span>Libre '+amt(money(c.libre),c.libre<0?'neg':'pos')+'</span></div>';
+  if(c.months.length) h+='<div class="total-sub" style="margin-top:6px">'+c.months.map(m=>'<span>'+esc(monthShort(m[0]))+' '+amt(money(m[1]))+'</span>').join('')+'</div>';
+  return h+'<p class="small muted" style="margin:8px 0 0">La plata sigue siendo de '+esc(ownerName(fo))+' y sigue rindiendo; esto es lo que tiene que quedar disponible para pagar las cuotas y devolver lo que se debe.</p></section>';
+}
+
+/* ----- Archivar dueños (para los que están «por un tiempo») ----- */
+function ownerBusy(o){
+  if(S.accounts.some(a=>Math.abs((ownerBalances(a)[o]||0))>0)) return 'todavía tiene plata en alguna cuenta';
+  if(debtPairs().some(p=>p.debtor===o||p.creditor===o)) return 'todavía tiene deudas con otros dueños';
+  if(S.plans.some(p=>p.data.owner===o||(p.data.for&&p.data.for[o]))||S.fixed.some(f=>f.data.owner===o||(f.data.for&&f.data.for[o]))) return 'todavía tiene cuotas o gastos fijos';
+  return '';
+}
+/* ----- Gastos de tarjeta para otros dueños: se cargan antes y se reconocen al subir el resumen ----- */
+const prePend=()=>S.movs.filter(m=>m.type==='out'&&isCard(m.account)&&!m.stmt&&m.for&&Object.keys(m.for).some(k=>k!==(m.owner||'yo')));
+function matchPre(M){
+  if(M.preDone) return; M.preDone=true;
+  const ex=S.stmts.find(x=>x.card===M.card&&x.period===M.period);
+  const forOther=m=>m.for&&Object.keys(m.for).some(k=>k!==(m.owner||'yo'));
+  /* Candidatos: lo cargado antes y todavía sin resumen, y lo que ya estaba en este mismo resumen si se vuelve a subir. */
+  const free=prePend().concat(ex?S.movs.filter(m=>m.stmt===ex.id&&m.type==='out'&&forOther(m)):[]);
+  const dd=(a,b)=>Math.abs(daysBetween(a,b));
+  const words=t=>normDesc(t).split(' ').filter(w=>w.length>=3);
+  const sim=(a,b)=>{ const A=words(a),B=words(b); return A.some(w=>B.indexOf(w)>-1); };
+  const cn=r=>{ const q=/(\d+)\s*\/\s*(\d+)/.exec(r.cuota||''); return q?+q[1]:0; };
+  const cand=[];
+  M.rows.forEach((r,i)=>{
+    if(!r.inc||r.usd||r.own||isNaN(r.cents)||!r.date) return;
+    free.forEach(m=>{
+      if(m.cents!==r.cents) return;
+      const k=cn(r), mk=/cuota (\d+)\/\d+/.exec(m.note||''); let score=null;
+      /* Una cuota se reconoce por su número (el banco imprime la fecha de la compra, no la de la cuota). */
+      if(k&&m.plan&&mk&&+mk[1]===k) score=-1000;
+      else if(!k||!m.plan){ const d=dd(m.date,r.date); if(d<=10) score=d+(sim(m.note,r.desc)?0:50); }
+      if(score!==null) cand.push({i:i,m:m,score:score});
+    });
+  });
+  cand.sort((a,b)=>a.score-b.score);
+  const usedR={}, usedM={};
+  cand.forEach(c=>{ if(usedR[c.i]||usedM[c.m.id]) return; usedR[c.i]=1; usedM[c.m.id]=1; const r=M.rows[c.i]; r.pre=c.m.id; r.own=Object.keys(c.m.for).find(k=>k!==(c.m.owner||'yo'))||Object.keys(c.m.for)[0]; });
+  M.rows.forEach((r,i)=>{ if(r.pre&&(cand.filter(c=>c.i===i).length>1||cand.filter(c=>c.m.id===r.pre).length>1)) r.preAmb=true; });
+  /* Cuotas de un gasto en cuotas cuya cuota todavía no se anotó (el banco la cobró antes de la fecha de la app). */
+  M.rows.forEach(r=>{
+    if(r.pre||!r.inc||r.usd||r.own||isNaN(r.cents)) return; const k=cn(r); if(k<2) return;
+    const pl=S.plans.find(x=>isCard(x.data.account)&&k>x.done&&k<=x.n&&planCuota(x,k)===r.cents&&x.data.for&&Object.keys(x.data.for).some(z=>z!==(x.data.owner||'yo')));
+    if(pl){ r.planAhead=pl.id; r.own=Object.keys(pl.data.for).find(z=>z!==(pl.data.owner||'yo')); }
+  });
+}
+/* Anota ahora las cuotas de un plan hasta la k (la k queda ligada al resumen). */
+function planAdvanceTo(pl,k,stmtId,date,cat){
+  for(let j=pl.done+1;j<=k;j++){
+    const cq=planCuota(pl,j), cd={cents:cq}; if(pl.data.for&&pl.total!=null) cd.for=allocate(cq,pl.data.for);
+    const mv=Object.assign({},pl.data,cd,{id:newId(),date:j===k?date:planDate(pl.start,j-1),note:(pl.data.note||'Compra')+' · cuota '+j+'/'+pl.n,plan:pl.id,createdAt:Date.now()+j});
+    if(j===k){ mv.stmt=stmtId; if(cat&&cat!=='sin') mv.cat=cat; }
+    S.movs.push(mv);
+  }
+  pl.done=k; S.plans=S.plans.filter(x=>x.done<x.n);
+}
+function prePendBlock(){
+  const L=prePend(); if(!L.length) return '';
+  return '<section><h2 class="sec">Gastos de tarjeta para otros dueños, esperando el resumen</h2><div class="list-head">'+L.slice().sort((a,b)=>a.date<b.date?1:-1).map(m=>'<div class="mov"><div><div class="mov-t">'+esc(m.note||'Consumo')+'</div><div class="mov-s">'+esc(fmtDate(m.date))+' · para '+esc(Object.keys(m.for).map(ownerName).join(', '))+'</div></div>'+amt(money(m.cents))+'</div>').join('')+'</div><p class="an-note">Cuando subas el resumen del mes, la app los reconoce por monto y fecha (y las cuotas por su número) y no los duplica.</p></section>';
+}
+
+function preNotice(){
+  const L=prePend(); if(!L.length) return '';
+  const tot=L.reduce((s,m)=>s+m.cents,0);
+  return '<div class="notice info"><span>Tenés '+L.length+' gasto(s) de tarjeta para otros dueños ('+amt(money(tot))+') que todavía no figuran en un resumen. Cuando subas el resumen, la app los reconoce sola.</span><a class="btn sm" href="#tarjetas">Ver</a></div>';
+}
 /* ---------- Ventanas ---------- */
 function accOptions(sel,extra){
   const ids=new Set(liveAccs().map(a=>a.id)); (extra||[]).forEach(i=>i&&ids.add(i));
   return S.accounts.filter(a=>ids.has(a.id)).sort(byOrder).map(a=>'<option value="'+esc(a.id)+'"'+(a.id===sel?' selected':'')+'>'+esc(accLabel(a))+'</option>').join('');
 }
-function ownOpts(sel){ return S.owners.map(o=>opt(o.id,o.name,o.id===sel)).join(''); }
+function ownOpts(sel){ return liveOwners(sel).map(o=>opt(o.id,o.name,o.id===sel)).join(''); }
 /* Lo último que cargaste (cuenta y dueño): queda guardado en el celular para precargarlo la próxima vez. */
 function prefGet(){ try{ return JSON.parse(localStorage.getItem('cuentas-ultimo')||'{}')||{}; }catch(_){ return {}; } }
 function prefSet(o){ try{ localStorage.setItem('cuentas-ultimo',JSON.stringify(Object.assign(prefGet(),o))); }catch(_){} }
@@ -1488,7 +1647,7 @@ function viewDeudas(){
   });
   h+='</section>'+addBtn+'<h2 class="sec" style="margin:4px 0 0">Entre quiénes</h2>';
   P.forEach((p,i)=>{
-    h+='<div class="debt"><div class="debt-h"><span><b>'+esc(ownerName(p.debtor))+'</b> le debe a <b>'+esc(ownerName(p.creditor))+'</b></span><b>'+amt(money(p.cents,p.c))+'</b></div>'
+    h+='<div class="debt"><div class="debt-h"><span><b>'+esc(ownerName(p.debtor))+'</b> le debe a <b>'+esc(ownerName(p.creditor))+'</b></span><b>'+amt(money(p.cents,p.c))+'</b></div><div class="mov-s" style="margin-top:-4px">'+(debtAge(p)>=1?'La deuda más vieja sin devolver: '+(debtAge(p)>60?'<b class="neg">hace '+diasTxt(debtAge(p))+'</b>':'hace '+diasTxt(debtAge(p))):'Deuda de hoy')+'</div>'
       +'<div class="mov-actions"><button class="btn sm primary" data-act="debt-pay" data-id="'+i+'">Devolver</button><button class="btn sm" data-act="debt-csv" data-id="'+i+'">Excel</button><button class="btn sm" data-act="debt-pdf" data-id="'+i+'">PDF / Imprimir</button></div>'
       +'<details><summary class="muted">De dónde sale</summary><div class="list-head">'
       +p.items.slice().sort((a,b)=>a.m.date<b.m.date?1:-1).map(it=>{ const v=it.a===p.debtor?it.v:-it.v; const man=!!it.m.src;
@@ -1519,7 +1678,7 @@ function debtPrint(i){
   w.document.open(); w.document.write(html); w.document.close(); setTimeout(()=>{ try{ w.focus(); w.print(); }catch(_){} },400);
 }
 function claimModal(){
-  const os=S.owners;
+  const os=liveOwners();
   return '<form id="clform" class="sheet" novalidate><h2>Deuda o devolución a mano</h2>'
     +'<p class="hint">Sirve para lo que no pasó por ninguna cuenta de la app: una deuda de antes, o una devolución que ya se hizo por fuera.</p>'
     +'<fieldset class="seg"><legend class="muted" style="position:absolute;left:-9999px">Qué anotás</legend><label><input type="radio" name="cl-kind" value="add" checked><span>Suma deuda</span></label><label><input type="radio" name="cl-kind" value="sub"><span>Resta deuda</span></label></fieldset>'
@@ -1537,6 +1696,7 @@ function saveClaim(){
   if(from===to){ err.textContent='Elegí dos dueños distintos.'; return; }
   if(isNaN(cents)||cents<=0){ err.textContent='Ingresá un monto mayor a cero.'; return; }
   if(!date){ err.textContent='Elegí una fecha.'; return; }
+  if(isClosed(date)){ err.textContent='Ese mes está cerrado. Reabrilo desde «Informe por dueño» o cambiá la fecha.'; return; }
   S.claims.push({id:newId(),from:from,to:to,cur:$('#cl-cur').value==='USD'?'USD':'ARS',cents:sb?-cents:cents,date:date,note:$('#cl-note').value.trim(),src:'manual',createdAt:Date.now()});
   persist(); closeModal(); onData(); toast('Guardado');
 }
@@ -1549,7 +1709,7 @@ function movModal(m,pt,pa,pay){
   const first=liveAccs()[0];
   const lastAcc=prefGet().acc, lastOk=lastAcc&&accById(lastAcc)&&!accById(lastAcc).archived&&accById(lastAcc).kind!=='card';
   const sel=m?m.account:(pay.from||((pa&&accById(pa)&&!accById(pa).archived)?pa:(lastOk?lastAcc:(first&&first.id))));
-  const ownSel=m?(m.owner||'yo'):(pay.owner||S.lastOwner);
+  const ownSel=m?(m.owner||'yo'):(pay.owner||soloOf(sel)||S.lastOwner);
   const toOwnSel=m?(m.toOwner||ownSel):(pay.toOwner||ownSel);
   const kindSel=m?(m.kind||''):(pay.kind||'');
   const fm=m&&m.for?m.for:null, fk=fm?Object.keys(fm):[];
@@ -1564,15 +1724,16 @@ function movModal(m,pt,pa,pay){
   const own=isY?'':'<label for="m-own" id="m-own-l">Con plata de quién</label><select id="m-own"'+(ownSel!=='yo'?' class="odd"':'')+'>'+ownOpts(ownSel)+'</select><p class="hint">De quién es la plata que se usa: tuya, de la Catequesis, etc. Se acuerda del último que usaste.</p>';
   const trBlock=isY?'':'<div id="tr-wrap" hidden><label for="m-toown">Pasa a ser plata de</label><select id="m-toown">'+ownOpts(toOwnSel)+'</select>'
     +'<div id="kind-wrap" hidden><label for="m-kind">¿Qué significa?</label><select id="m-kind">'+opt('repay','Devolución de una deuda',kindSel==='repay')+opt('loan','Préstamo (me lo tiene que devolver)',kindSel==='loan')+opt('gift','Aporte, sin deuda',kindSel==='gift')+'</select></div></div>';
-  const forBlock=isY?'':'<div id="for-wrap" hidden><label for="m-for">¿Para quién es el gasto?</label><select id="m-for">'+opt('','Para el mismo dueño de la plata',!forSel)+S.owners.map(o=>opt(o.id,o.name,forSel===o.id)).join('')+opt('__multi','Repartir entre varios…',forSel==='__multi')+'</select><p class="hint">Si pagaste algo de otro dueño (por ejemplo, de la Catequesis) con tu plata, elegilo acá: queda anotado como deuda.</p>'
-    +'<div id="for-multi" hidden>'+S.owners.map(o=>'<label class="fo-row"><span>'+esc(o.name)+'</span><input data-fo="'+esc(o.id)+'" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(fm&&fm[o.id]?centsToInput(fm[o.id]):'')+'"></label>').join('')+'</div></div>';
-  const repBlock=isY?'':'<div id="rep-wrap" hidden><label for="m-repay">¿Es una devolución de una deuda?</label><select id="m-repay">'+opt('','No, es plata que entra',!repSel)+S.owners.map(o=>opt(o.id,'Sí, me la devuelve '+o.name,repSel===o.id)).join('')+'</select></div>';
+  const forBlock=isY?'':'<div id="for-wrap" hidden><label for="m-for">¿Para quién es el gasto?</label><select id="m-for">'+opt('','Para el mismo dueño de la plata',!forSel)+liveOwners(forSel).map(o=>opt(o.id,o.name,forSel===o.id)).join('')+opt('__multi','Repartir entre varios…',forSel==='__multi')+'</select><p class="hint">Si pagaste algo de otro dueño (por ejemplo, de la Catequesis) con tu plata, elegilo acá: queda anotado como deuda.</p>'
+    +'<div id="for-multi" hidden>'+liveOwners(fk).map(o=>'<label class="fo-row"><span>'+esc(o.name)+'</span><input data-fo="'+esc(o.id)+'" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(fm&&fm[o.id]?centsToInput(fm[o.id]):'')+'"></label>').join('')+'</div></div>';
+  const repBlock=isY?'':'<div id="rep-wrap" hidden><label for="m-repay">¿Es una devolución de una deuda?</label><select id="m-repay">'+opt('','No, es plata que entra',!repSel)+liveOwners(repSel).map(o=>opt(o.id,'Sí, me la devuelve '+o.name,repSel===o.id)).join('')+'</select></div>';
   /* Lo básico va arriba; dueño, para quién, devolución y cuotas quedan en «Más opciones». */
   const isCardSel=!!(sel&&isCard(sel)), ownerOdd=!!(m&&((m.owner||'yo')!=='yo'||m.for||m.repayFrom||m.toOwner));
   const openMore=(!isY&&(ownerOdd||modeSel==='own'||(type==='out'&&isCardSel)||!!pay.repayFrom||!!pay.toOwner))?' open':'';
   const catVal=m?(m.cat||'sin'):(pay.cat||'sin');
   const catBlock=isY?'':'<div id="cat-wrap" hidden><label for="m-cat">Categoría</label><select id="m-cat">'+S.cats.map(c=>opt(c.id,c.name,c.id===catVal)).join('')+'</select></div>';
-  const extraBlock=isY?'':'<label for="m-ref">N.º de comprobante o factura (opcional)</label><input id="m-ref" maxlength="40" autocomplete="off" value="'+esc(m&&m.ref?m.ref:'')+'">'+(m?'':'<div id="fx-wrap"><label class="chk"><input type="checkbox" id="m-fixed"><span id="fx-t">Se repite todos los meses (gasto fijo)</span></label></div>');
+  const projBlock=(isY||!S.goals.length)?'':'<label for="m-proj">Proyecto (opcional)</label><select id="m-proj">'+opt('','Ninguno',!(m&&m.proj))+S.goals.map(g=>opt(g.id,g.name,m&&m.proj===g.id)).join('')+'</select>';
+  const extraBlock=isY?'':projBlock+'<label for="m-ref">N.º de comprobante o factura (opcional)</label><input id="m-ref" maxlength="40" autocomplete="off" value="'+esc(m&&m.ref?m.ref:'')+'">'+(m?'':'<div id="fx-wrap"><label class="chk"><input type="checkbox" id="m-fixed"><span id="fx-t">Se repite todos los meses (gasto fijo)</span></label></div>');
   const moreBlock=isY?'':'<details id="m-more" class="more"'+openMore+'><summary id="m-more-s">Más opciones</summary>'+trBlock+forBlock+repBlock+extraBlock
 +'</details>';
   const quickBox=(m||Object.keys(pay).length)?'':'<div class="quick"><label for="m-quick">Escribilo en una línea</label><input id="m-quick" type="text" autocomplete="off" autocapitalize="none" enterkeyhint="done" placeholder="super 15000 bbva" data-focus><p class="hint">Escribí como hablás: qué fue, el monto y la cuenta. Ej.: farmacia 3500 efectivo.</p><p class="hint" id="m-quick-h" aria-live="polite"></p></div>';
@@ -1595,16 +1756,18 @@ function movModal(m,pt,pa,pay){
 function applyQuick(txt){
   const hint=$('#m-quick-h'); if(!hint) return;
   if(!txt.trim()){ hint.textContent=''; return; }
-  const r=QuickMov.parse(txt,{accounts:S.accounts,owners:S.owners,today:todayStr()});
+  const r=QuickMov.parse(txt,{accounts:S.accounts,owners:liveOwners(),today:todayStr()});
   const set=(sel,v)=>{ const el=$(sel); if(el&&v!=null) el.value=v; };
   /* Lo que el formulario traía al abrir (cuenta, destino y dueño): si la frase no nombra algo, vuelve a eso y no queda lo de la frase anterior. */
-  if(!S.modal.qdef){ const g=x=>{ const el=$(x); return el?el.value:null; }; S.modal.qdef={acc:g('#m-acc'),to:g('#m-to'),own:g('#m-own'),toown:g('#m-toown')}; }
+  if(!S.modal.qdef){ const g=x=>{ const el=$(x); return el?el.value:null; }; S.modal.qdef={type:(($('input[name=mtype]:checked')||{}).value)||'out',acc:g('#m-acc'),to:g('#m-to'),own:g('#m-own'),toown:g('#m-toown')}; }
   const D=S.modal.qdef;
+  /* Si la frase no trae un verbo (cobré, gasté, pasé…), se respeta el tipo que ya estaba elegido: no se cambia un Ingreso a Egreso sin avisar. */
+  if(!r.typeExplicit){ const cur=(($('input[name=mtype]:checked')||{}).value)||D.type; r.type=S.modal.typeTouched?cur:D.type; }
   const rad=$('input[name=mtype][value='+r.type+']'); if(rad) rad.checked=true;
   const rm=$('input[name=mmode][value=acc]'); if(rm) rm.checked=true;
   set('#m-acc',r.acc||D.acc);
   set('#m-to',r.type==='transfer'?(r.to||D.to):D.to);
-  const ow=r.owner||D.own; set('#m-own',ow); set('#m-toown',r.owner||D.toown||ow);
+  const ow=r.owner||soloOf(($('#m-acc')||{}).value)||D.own; set('#m-own',ow); set('#m-toown',r.owner||D.toown||ow);
   { const mo=$('#m-more'); if(mo&&ow!=='yo') mo.open=true; }
   set('#m-amt',r.cents!=null?centsToInput(r.cents):'');
   set('#m-date',r.date||todayStr());
@@ -1740,6 +1903,7 @@ function accModal(a,preGroup,preCur){
     +((a&&S.movs.some(m=>m.account===a.id||m.to===a.id))?'<p class="hint">La moneda no se puede cambiar porque la cuenta ya tiene movimientos.</p>':'')
     +'<label class="check"><input type="checkbox" id="a-yields"'+(a&&a.yields?' checked':'')+'>Genera rendimientos diarios</label>'
     +'<label class="check"><input type="checkbox" id="a-card"'+(a&&a.kind==='card'?' checked':'')+'>Es una tarjeta de crédito (no tiene saldo: solo anoto consumos de otros, que quedan como deuda)</label>'
+    +'<label for="a-solo">Esta cuenta es de…</label><select id="a-solo">'+opt('','Varios dueños (efectivo, cuenta compartida)',!a||!a.soloOwner)+liveOwners(a&&a.soloOwner).map(o=>opt(o.id,o.name,!!(a&&a.soloOwner===o.id))).join('')+'</select><p class="hint">Si toda la plata de esta cuenta es de un solo dueño (por ejemplo «Reserva Montonera»), elegilo: al cargar movimientos de esa cuenta, el dueño se completa solo.</p>'
     +'<label>Saldo inicial de cada dueño</label>'+S.owners.map(o=>'<label class="fo-row" for="ini-'+esc(o.id)+'"><span>'+esc(o.name)+'</span><input id="ini-'+esc(o.id)+'" data-ini="'+esc(o.id)+'" inputmode="decimal" autocomplete="off" placeholder="0,00" value="'+(a&&initOf(a)[o.id]?centsToInput(initOf(a)[o.id]):'')+'"></label>').join('')
     +'<p class="hint">Lo que había en la cuenta antes del primer movimiento, repartido por dueño (en Efectivo, lo de cada uno). En una tarjeta, escribí la deuda con signo menos.</p>'
     +(a?'<label class="check"><input type="checkbox" id="a-arch"'+(a.archived?' checked':'')+'>Archivada (se oculta y no suma al total)</label>':'')
@@ -1779,7 +1943,7 @@ const catModal=(c,draft)=>{
   return h;
 };
 const ownerUsed=id=>S.movs.some(m=>m.owner===id||m.toOwner===id||(m.for&&m.for[id]!=null)||(m.split&&m.split[id]!=null))||S.claims.some(c=>c.from===id||c.to===id)||S.movs.some(m=>m.repay===id||m.repayTo===id)||S.ops.some(o=>o.owner===id)||S.hlds.some(h=>h.iowner===id&&h.initial)||S.accounts.some(a=>a.initialOwners&&a.initialOwners[id]);
-const ownerModal=o=>simpleNameModal('wform',o?'Editar dueño':'Nuevo dueño','Nombre (por ejemplo, un grupo o una persona)',o?o.name:'',(o&&o.id!=='yo'&&!ownerUsed(o.id))?'<button type="button" class="btn danger" data-act="owner-del">Eliminar</button>':'','');
+const ownerModal=o=>simpleNameModal('wform',o?'Editar dueño':'Nuevo dueño','Nombre (por ejemplo, un grupo o una persona)',o?o.name:'',((o&&o.id!=='yo'&&!ownerUsed(o.id))?'<button type="button" class="btn danger" data-act="owner-del">Eliminar</button>':'')+((o&&o.id!=='yo')?'<button type="button" class="btn" data-act="owner-arch" data-id="'+esc(o.id)+'">'+(o.archived?'Reactivar':'Archivar')+'</button>':''),(o&&o.id!=='yo')?'Archivar sirve para un dueño que estuvo «por un tiempo»: deja de aparecer en los botones y selectores, pero conserva su historia y sus informes. Para archivarlo tiene que estar en cero (sin plata, deudas ni cuotas).':'');
 
 /* Cuenta de tarjeta (en Cuentas) donde se anotan los consumos de otros dueños de esta tarjeta del resumen. */
 function cardAccFor(cardId,cur){
@@ -1810,6 +1974,7 @@ function stmtReview(){
   if(M.rows.length===1&&M.parsedZero) h+='<div class="note" style="margin-top:10px">No encontré consumos en ese texto. Podés cargarlos a mano abajo, o probar copiando solo la tabla de consumos.</div>';
   const cAccs=liveAccs().filter(a=>a.kind==='card'&&curOf(a.id)==='ARS');
   if(!M.cardAcc) M.cardAcc=cardAccFor(M.card);
+  matchPre(M);
   if(S.owners.length>1) h+='<div class="note" style="margin-top:10px">Si un consumo es de otro dueño, elegilo en «De quién es». No cuenta como gasto tuyo: se anota como deuda en la tarjeta.'+(cAccs.length?'<label for="rv-acc" style="margin-top:8px">Anotarlos en la tarjeta</label><select id="rv-acc">'+cAccs.map(a=>opt(a.id,accLabel(a),a.id===M.cardAcc)).join('')+'</select>':'<br><strong>Primero creá una cuenta marcada como tarjeta de crédito en Ajustes.</strong>')+'</div>';
   h+='<div class="rv-sum" id="rv-sum"></div><div id="rv-rows">';
   M.rows.forEach((r,i)=>{
@@ -1817,8 +1982,10 @@ function stmtReview(){
       +'<input type="date" data-f="date" aria-label="Fecha" value="'+esc(r.date)+'"><input data-f="amt" class="rv-amt" inputmode="decimal" autocomplete="off" aria-label="Monto" placeholder="Monto" value="'+esc(r.amtStr)+'">'
       +'<input data-f="desc" class="rv-desc" autocomplete="off" aria-label="Descripción" placeholder="Descripción" value="'+esc(r.desc)+'">'
       +'<select data-f="cat" class="rv-cat" aria-label="Categoría">'+catOpts(r.cat)+'</select>'
+      +(r.pre?'<div class="rv-flag" style="color:var(--pos)">Ya lo anotaste antes como gasto de '+esc(ownerName(r.own))+': se reconoce y no se duplica.'+(r.preAmb?' <b style="color:var(--warn)">Ojo: hay otro consumo del mismo monto; revisá que sea este.</b>':'')+'</div>':'')
+      +(r.planAhead?'<div class="rv-flag" style="color:var(--pos)">Es una cuota de un gasto en cuotas que ya anotaste para '+esc(ownerName(r.own))+': se anota ahora y no se duplica.</div>':'')
       +(r.cuota||r.flag?'<div class="rv-flag">'+(r.cuota?'Cuota '+esc(r.cuota)+'. ':'')+esc(r.flag)+'</div>':'')
-      +(S.owners.length>1?'<label class="rv-own">De quién es <select data-f="own" aria-label="De quién es el consumo">'+opt('','Mío',!r.own)+S.owners.filter(o=>o.id!=='yo').map(o=>opt(o.id,o.name,r.own===o.id)).join('')+'</select></label>':'')
+      +(S.owners.length>1?'<label class="rv-own">De quién es <select data-f="own" aria-label="De quién es el consumo">'+opt('','Mío',!r.own)+liveOwners(r.own).filter(o=>o.id!=='yo').map(o=>opt(o.id,o.name,r.own===o.id)).join('')+'</select></label>':'')
       +'<label class="rv-usd"><input type="checkbox" data-f="usd"'+(r.usd?' checked':'')+'> En dólares (US$)</label></div>';
   });
   h+='</div><div style="margin:8px 0"><button type="button" class="link" data-act="rv-add">+ Agregar una línea</button></div>'
@@ -1968,6 +2135,7 @@ function modalBody(kind,data){
     case 'claim': return claimModal();
     case 'budget': return budgetModal(data.b);
     case 'fixed': return fixedModal(data.f);
+    case 'projdet': return projModal(data.g);
     case 'goal': return goalModal(data.g);
     case 'px': return pxModal(data.hold);
     case 'menu': return menuModal();
@@ -2066,6 +2234,7 @@ function saveMov(){
   if(forMap) data.for=forMap;
   if(type==='out'){ const cv=($('#m-cat')||{}).value; if(cv&&cv!=='sin'){ data.cat=cv; if(note&&S.modal.catTouched) learnRule(note,cv); } }
   { const rf=($('#m-ref')||{}).value; if(rf&&rf.trim()) data.ref=rf.trim(); }
+  { const pj=($('#m-proj')||{}).value; if(pj&&type!=='transfer') data.proj=pj; else if(m&&m.proj&&!$('#m-proj')) data.proj=m.proj; }
   if(m&&m.fx) data.fx=m.fx;
   if(type==='in'){ const rp=$('#m-repay'); if(rp&&rp.value&&rp.value!==owner) data.repayFrom=rp.value; }
   if(m&&m.hold) data.hold=m.hold; keepRepay(m,data,type,owner,cents,date);
@@ -2110,14 +2279,18 @@ function saveAcc(){
   const ini={}; let initial=0, badI=false;
   $$('[data-ini]').forEach(i=>{ const raw=i.value.trim(); if(!raw) return; const v=parseAmt(raw); if(isNaN(v)) badI=true; else if(v){ ini[i.dataset.ini]=v; initial+=v; } });
   if(badI){err.textContent='Hay un saldo inicial que no se entiende.';return;}
+  { const so=($('#a-solo')||{}).value; if(so){ const tot=Object.keys(ini).reduce((x,k)=>x+ini[k],0); Object.keys(ini).forEach(k=>delete ini[k]); if(tot) ini[so]=tot; initial=tot; } }
+  if(S.closed.length&&a&&(a.cur!==($('#a-cur').value==='USD'?'USD':'ARS')||(a.kind==='card')!==!!($('#a-card')&&$('#a-card').checked))){err.textContent='Hay meses cerrados: no se puede cambiar la moneda ni el tipo de una cuenta que ya existe. Reabrí esos meses desde «Informe por dueño» primero.';return;}
   if(S.closed.length){
     const prev=a?(a.initialOwners||{yo:a.initial||0}):{}, ks=Array.from(new Set(Object.keys(prev).concat(Object.keys(ini))));
-    if(ks.some(k=>(prev[k]||0)!==(ini[k]||0))){err.textContent=a?'Hay meses cerrados: el saldo inicial (ni de quién es) se puede cambiar. Reabrí esos meses desde «Informe por dueño» primero.':'Hay meses cerrados: creá la cuenta con saldo 0 y anotá un ingreso con la fecha de hoy.';return;}
+    if(ks.some(k=>(prev[k]||0)!==(ini[k]||0))){err.textContent=a?'Hay meses cerrados: no se puede cambiar el saldo inicial (ni de quién es). Reabrí esos meses desde «Informe por dueño» primero.':'Hay meses cerrados: creá la cuenta con saldo 0 y anotá un ingreso con la fecha de hoy.';return;}
   }
   const maxOrder=S.accounts.reduce((m,x)=>Math.max(m,x.order||0),0);
-  const data={group:group||name,name:name,cur:$('#a-cur').value==='USD'?'USD':'ARS',yields:$('#a-yields').checked,initial:initial,initialOwners:ini,kind:($('#a-card')&&$('#a-card').checked)?'card':'',order:a?(a.order||0):Math.floor(maxOrder)+1,archived:a?$('#a-arch').checked:false};
+  const data={group:group||name,name:name,cur:$('#a-cur').value==='USD'?'USD':'ARS',yields:$('#a-yields').checked,initial:initial,initialOwners:ini,soloOwner:($('#a-solo')||{}).value||'',kind:($('#a-card')&&$('#a-card').checked)?'card':'',order:a?(a.order||0):Math.floor(maxOrder)+1,archived:a?$('#a-arch').checked:false};
   const id=a?a.id:slug((group||'')+'-'+name)+'-'+Math.random().toString(36).slice(2,6);
-  putAcc(id,data); closeModal(); toast('Cuenta guardada');
+  putAcc(id,data);
+  if(data.kind==='card'&&!S.cards.some(c=>c.account===id)){ S.cards.push({id:slug(accLabel(data))+'-'+Math.random().toString(36).slice(2,6),name:accLabel(data),account:id}); persist(); }
+  closeModal(); toast('Cuenta guardada');
 }
 function readName(errSel){
   const v=$('#n-name').value.trim();
@@ -2128,7 +2301,7 @@ function saveCard(){
   const v=readName('#n-err'); if(!v) return;
   const c=S.modal.c, then=S.modal.thenStmt;
   if(c){ c.name=v; S.cards=S.cards.map(x=>x.id===c.id?Object.assign({},x,{name:v}):x); }
-  else S.cards.push({id:slug(v)+'-'+Math.random().toString(36).slice(2,6),name:v});
+  else{ const free=S.accounts.find(a=>a.kind==='card'&&!a.archived&&!S.cards.some(c=>c.account===a.id)); S.cards.push(Object.assign({id:slug(v)+'-'+Math.random().toString(36).slice(2,6),name:v},free?{account:free.id}:{})); }
   persist(); closeModal(); render(); toast('Tarjeta guardada');
   if(then) openStmt();
 }
@@ -2168,7 +2341,7 @@ function stmtAnalyze(){
   if(!/^\d{4}-\d{2}$/.test(M.period)){err.textContent='Elegí el mes del resumen.';return;}
   if(!M.text.trim()){err.textContent='Pegá el texto del resumen o elegí «Cargar a mano».';return;}
   if(!M.totalStr){ const mt=stmtMeta(M.text); if(mt.total) M.totalStr=mt.total; if(mt.totalUsd&&!M.totalUsdStr) M.totalUsdStr=mt.totalUsd; }
-  M.rows=parseStatement(M.text,M.period); M.parsedZero=false;
+  M.rows=parseStatement(M.text,M.period); M.parsedZero=false; M.preDone=false;
   if(M.paid==='usd') M.rows.forEach(r=>{ if(r.rg){ r.inc=false; r.flag='No se cobra si pagás los dólares con dólares: se descuenta de tus gastos.'; } });
   if(!M.rows.length){ M.rows=[blankRow(M.period)]; M.parsedZero=true; }
   M.step=2; stmtShowReview();
@@ -2176,7 +2349,7 @@ function stmtAnalyze(){
 function stmtManual(){
   const M=S.modal; stmtRead();
   if(!/^\d{4}-\d{2}$/.test(M.period)){ $('#s-err').textContent='Elegí el mes del resumen.'; return; }
-  M.rows=[blankRow(M.period)]; M.parsedZero=false; M.step=2; stmtShowReview();
+  M.rows=[blankRow(M.period)]; M.parsedZero=false; M.preDone=false; M.step=2; stmtShowReview();
 }
 function reviewField(t){
   const M=S.modal; if(!M||!M.rows) return;
@@ -2188,7 +2361,7 @@ function reviewField(t){
   else if(f==='amt'){ r.amtStr=t.value; r.cents=parseAmt(t.value); }
   else if(f==='cat') r.cat=t.value;
   else if(f==='usd') r.usd=t.checked;
-  else if(f==='own') r.own=t.value;
+  else if(f==='own'){ r.own=t.value; if(!t.value){ r.pre=null; r.preAmb=false; r.planAhead=null; } }
   updateReviewSum();
 }
 function importReview(){
@@ -2209,11 +2382,19 @@ function importReview(){
   }
   let st=S.stmts.find(s=>s.card===M.card&&s.period===M.period);
   if(M.rows.some(r=>r.inc&&r.own&&isClosed(r.date))||(st&&S.movs.some(m=>m.stmt===st.id&&isClosed(m.date)))){ err.textContent='Hay consumos de otros dueños en un mes cerrado. Reabrilo desde «Informe por dueño» para cargar este resumen.'; return; }
-  if(st){ S.exp=S.exp.filter(e=>e.stmt!==st.id); S.movs=S.movs.filter(m=>m.stmt!==st.id); }
+  /* Lo que ya estaba anotado (como gasto de otro dueño) se conserva y se vuelve a ligar, en lugar de borrarse al reimportar. */
+  const keep=new Set(M.rows.filter(r=>r.inc&&r.own&&r.pre).map(r=>r.pre));
+  { const free2=prePend().concat(st?S.movs.filter(m=>m.stmt===st.id&&m.for):[]).filter(m=>!keep.has(m.id));
+    M.rows.forEach(r=>{ if(!r.inc||!r.own||r.pre||r.usd||r.planAhead) return; const ix=free2.findIndex(m=>m.cents===r.cents&&m.for&&m.for[r.own]&&Math.abs(daysBetween(m.date,r.date))<=45); if(ix>=0){ r.pre=free2[ix].id; keep.add(r.pre); free2.splice(ix,1); } }); }
+  if(st){ S.exp=S.exp.filter(e=>e.stmt!==st.id); S.movs=S.movs.filter(m=>m.stmt!==st.id||keep.has(m.id)); }
   else{ st={id:newId(),card:M.card,period:M.period,createdAt:Date.now()}; S.stmts.push(st); }
   st.paid=M.paid==='usd'?'usd':'pesos';
   let learned=0;
   M.rows.filter(r=>r.inc).forEach(r=>{
+    const pm=(r.own&&r.pre)?S.movs.find(x=>x.id===r.pre&&(!x.stmt||x.stmt===st.id)):null;
+    if(pm){ pm.stmt=st.id; pm.date=r.date; pm.cents=r.cents; pm.for={[r.own]:r.cents}; if(!pm.note) pm.note=((r.desc||'').trim()||'Consumo de tarjeta'); if(r.cat&&r.cat!=='sin') pm.cat=r.cat; return; }
+    const pl=(r.own&&r.planAhead)?S.plans.find(x=>x.id===r.planAhead):null;
+    if(pl){ const q=/(\d+)\s*\/\s*(\d+)/.exec(r.cuota||''); if(q&&+q[1]>pl.done){ planAdvanceTo(pl,+q[1],st.id,r.date,r.cat); return; } }
     if(r.own){ S.movs.push({id:newId(),type:'out',account:M.cardAcc,cents:r.cents,date:r.date,note:((r.desc||'').trim()||'Consumo de tarjeta')+(r.cuota?' · cuota '+r.cuota:''),owner:'yo',for:{[r.own]:r.cents},stmt:st.id,createdAt:Date.now()}); return; }
     const e={id:newId(),card:M.card,stmt:st.id,period:M.period,date:r.date,desc:(r.desc||'').trim()||'Sin descripción',cents:r.cents,cat:r.cat};
     if(r.cuota) e.cuota=r.cuota;
@@ -2266,6 +2447,7 @@ document.addEventListener('click',e=>{
   else if(act==='plan-no'){ S.confirmPlan=''; render(); }
   else if(act==='plan-yes'){ S.plans=S.plans.filter(x=>x.id!==id); S.confirmPlan=''; persist(); onData(); toast('Cuotas canceladas'); }
   else if(act==='claim-del'){
+    { const cl=S.claims.find(x=>x.id===id); if(cl&&isClosed(cl.date)){ toast('Esa deuda es de un mes cerrado. Reabrilo desde «Informe por dueño».'); return; } }
     if(!b.dataset.sure){ b.dataset.sure='1'; b.textContent='Tocá otra vez para eliminar'; return; }
     S.claims=S.claims.filter(x=>x.id!==id); persist(); onData(); toast('Eliminado');
   }
@@ -2302,7 +2484,7 @@ document.addEventListener('click',e=>{
   else if(act==='more'){ S.limit+=100; render(); }
   else if(act==='export') exportBackup();
   else if(act==='import'){ const f=$('#imp-file'); if(f) f.click(); }
-  else if(act==='imp-yes'){ const cerr=(S.closed||[]).slice(); applyData(S.modal.data); S.closed=Array.from(new Set((S.closed||[]).concat(cerr))); persist(); closeModal(); onData(); toast('Copia restaurada'); }
+  else if(act==='imp-yes'){ const cerr=(S.closed||[]).slice(); applyData(S.modal.data); S.closed=Array.from(new Set((S.closed||[]).concat(cerr))); ensureCards(); applyPlans(); applyFixed(); persist(); closeModal(); onData(); toast('Copia restaurada'); }
   else if(act==='chart'){ S.chartAcc=id||''; render(); }
   else if(act==='owner-new') openModal('owner',{o:null});
   else if(act==='owner-edit') openModal('owner',{o:S.owners.find(x=>x.id===id)});
@@ -2363,10 +2545,11 @@ document.addEventListener('change',e=>{
   if(t.dataset&&t.dataset.filter){ S[t.dataset.filter]=t.value; S.limit=100; S.xLimit=100; if(t.dataset.filter==='xPeriod') S.xCat=''; render(); }
   else if(t.dataset&&t.dataset.xcat){ setExpCat(t.dataset.xcat,t.value); }
   else if(t.dataset&&t.dataset.f){ reviewField(t); }
-  else if(t.name==='mtype'||t.name==='mmode') toggleTo();
+  else if(t.name==='mtype'||t.name==='mmode'){ if(S.modal&&t.name==='mtype') S.modal.typeTouched=true; toggleTo(); }
   else if(t.id==='m-cat'){ if(S.modal) S.modal.catTouched=true; }
   else if(t.id==='m-to'){ if(S.modal) S.modal.toTouched=true; refreshMovForm(); }
   else if(t.id==='m-kind'){ if(S.modal) S.modal.kindTouched=true; refreshMovForm(); }
+  else if(t.id==='m-acc'){ const so=soloOf(t.value); if(so&&$('#m-own')) $('#m-own').value=so; refreshMovForm(); }
   else if(t.id==='m-acc'||t.id==='m-to'||t.id==='m-own'||t.id==='m-toown'||t.id==='m-for') refreshMovForm();
   else if(t.id==='o-hold') updOpTotal();
   else if(t.id==='u-date') updPreview();
@@ -2409,13 +2592,13 @@ function init(){
   readHash();
   if(!loadStore()) return;
   S.xPeriod='';
-  applyPlans(); applyFixed();
+  applyPlans(); applyFixed(); if(ensureCards()) persist();
   onData();
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&(applyPlans()|applyFixed())) onData(); });
   armAutoBackup();
   try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(_){}
 }
 /* Solo para las pruebas automáticas (tests/probar.py): se activa abriendo la app con ?test en la dirección. */
-if(location.search.indexOf('test')>-1) window.__T={S:S,extraAct:extraAct,delMov:delMov,categorize:categorize,informeData:informeData,applyFixed:applyFixed,budgetSpent:budgetSpent,isClosed:isClosed,monthSpend:monthSpend,debtPairs:debtPairs,balance:balance,accById:accById,persist:persist,onData:onData,render:render,todayStr:todayStr,openModal:openModal,stmtShowReview:stmtShowReview,cardReminder:cardReminder,cardAccFor:cardAccFor,applyPlans:applyPlans,ownerBalances:ownerBalances,normalizeData:normalizeData,backupJson:backupJson};
+if(location.search.indexOf('test')>-1) window.__T={S:S,prePend:prePend,matchPre:matchPre,ownerBusy:ownerBusy,soloOf:soloOf,commitData:commitData,debtAge:debtAge,ensureCards:ensureCards,extraAct:extraAct,delMov:delMov,categorize:categorize,informeData:informeData,applyFixed:applyFixed,budgetSpent:budgetSpent,isClosed:isClosed,monthSpend:monthSpend,debtPairs:debtPairs,balance:balance,accById:accById,persist:persist,onData:onData,render:render,todayStr:todayStr,openModal:openModal,stmtShowReview:stmtShowReview,cardReminder:cardReminder,cardAccFor:cardAccFor,applyPlans:applyPlans,ownerBalances:ownerBalances,normalizeData:normalizeData,backupJson:backupJson};
 init();
 })();

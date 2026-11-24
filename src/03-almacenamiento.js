@@ -35,9 +35,9 @@ function normalizeData(d,fresh){
   o.accounts=o.accounts.filter(a=>!(a.id==='mercado-pago-fondo'&&!a.initial&&!o.movs.some(m=>m.account===a.id||m.to===a.id)));
   o.owners=arr(d.owners).filter(x=>x&&str(x.id)&&str(x.name));
   if(!o.owners.length) o.owners=DEFAULT_OWNERS.map(x=>Object.assign({},x));
-  if(!o.owners.some(x=>x.id==='yo')) o.owners.unshift({id:'yo',name:'Gonza'});
+  if(!o.owners.some(x=>x.id==='yo')) o.owners.unshift({id:'yo',name:'Gonzalo'});
   if(mig4||fresh){
-    o.owners=o.owners.map(x=>(x.id==='yo'&&x.name==='Mío')?Object.assign({},x,{name:'Gonza'}):x);
+    o.owners=o.owners.map(x=>(x.id==='yo'&&x.name==='Mío')?Object.assign({},x,{name:'Gonzalo'}):x);
     DEFAULT_OWNERS.forEach(x=>{ if(!o.owners.some(y=>y.id===x.id||y.name.toLowerCase()===x.name.toLowerCase())) o.owners.push(Object.assign({},x)); });
   }
   o.cards=arr(d.cards).filter(x=>x&&str(x.id)&&str(x.name));
@@ -50,7 +50,7 @@ function normalizeData(d,fresh){
   o.stmts=arr(d.stmts).filter(x=>x&&str(x.id)&&str(x.card)&&str(x.period));
   o.exp=arr(d.exp).filter(x=>x&&str(x.id)&&str(x.date)&&typeof x.cents==='number'&&str(x.period));
   o.hlds=Array.isArray(d.hlds)?d.hlds.filter(x=>x&&str(x.id)&&str(x.name)).map(x=>Object.assign({initial:0,kind:'nom',cur:'USD',px:[]},x)):[];
-  o.claims=arr(d.claims).filter(x=>x&&str(x.id)&&str(x.from)&&str(x.to)&&typeof x.cents==='number');
+  o.claims=arr(d.claims).filter(x=>x&&str(x.id)&&str(x.from)&&str(x.to)&&typeof x.cents==='number').map(x=>str(x.date)&&x.date?x:Object.assign({},x,{date:todayStr()}));
   o.plans=arr(d.plans).filter(x=>x&&str(x.id)&&str(x.start)&&x.data&&typeof x.n==='number'&&typeof x.done==='number'&&typeof x.data.cents==='number'&&str(x.data.account));
   o.fixed=arr(d.fixed).filter(x=>x&&str(x.id)&&str(x.last)&&typeof x.day==='number'&&x.data&&typeof x.data.cents==='number'&&str(x.data.account));
   o.budgets=arr(d.budgets).filter(x=>x&&str(x.id)&&str(x.cat)&&typeof x.cents==='number');
