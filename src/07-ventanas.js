@@ -352,7 +352,8 @@ function stmtReview(){
   if(M.rows.length===1&&M.parsedZero) h+='<div class="note" style="margin-top:10px">No encontré consumos en ese texto. Podés cargarlos a mano abajo, o probar copiando solo la tabla de consumos.</div>';
   const cAccs=liveAccs().filter(a=>a.kind==='card'&&curOf(a.id)==='ARS');
   if(!M.cardAcc) M.cardAcc=cardAccFor(M.card);
-  matchPre(M);
+  matchPre(M); matchEtios(M);
+  if(M.etiosSobran) h+='<div class="note" style="margin-top:10px">⛽ Hay '+M.etiosSobran+(M.etiosSobran===1?' carga':' cargas')+' del Etios de este mes que no aparece'+(M.etiosSobran===1?'':'n')+' en este resumen. Quizás la pagaste de otra forma, o entra en el resumen que viene.</div>';
   if(S.owners.length>1) h+='<div class="note" style="margin-top:10px">Si un consumo es de otro dueño, elegilo en «De quién es». No cuenta como gasto tuyo: se anota como deuda en la tarjeta.'+(cAccs.length?'<label for="rv-acc" style="margin-top:8px">Anotarlos en la tarjeta</label><select id="rv-acc">'+cAccs.map(a=>opt(a.id,accLabel(a),a.id===M.cardAcc)).join('')+'</select>':'<br><strong>Primero creá una cuenta marcada como tarjeta de crédito en Ajustes.</strong>')+'</div>';
   h+='<div class="rv-sum" id="rv-sum"></div><div id="rv-rows">';
   M.rows.forEach((r,i)=>{
@@ -361,6 +362,8 @@ function stmtReview(){
       +'<input data-f="desc" class="rv-desc" autocomplete="off" aria-label="Descripción" placeholder="Descripción" value="'+esc(r.desc)+'">'
       +'<select data-f="cat" class="rv-cat" aria-label="Categoría">'+catOpts(r.cat)+'</select>'
       +(r.pre?'<div class="rv-flag" style="color:var(--pos)">Ya lo anotaste antes como gasto de '+esc(ownerName(r.own))+': se reconoce y no se duplica.'+(r.preAmb?' <b style="color:var(--warn)">Ojo: hay otro consumo del mismo monto; revisá que sea este.</b>':'')+'</div>':'')
+      +(r.etios?'<div class="rv-flag" style="color:var(--pos)">⛽ Coincide con tu carga del Etios: '+esc(r.etiosDet)+'.'+(r.etiosAprox?' <b style="color:var(--warn)">El monto no es exacto: revisá que sea esta.</b>':'')+'</div>'
+        :(r.fuel&&M.etiosN?'<div class="rv-flag" style="color:var(--warn)">⛽ Esta carga de nafta no está en el Etios: ¿te olvidaste de anotarla, o fue otro auto?</div>':''))
       +(r.planAhead?'<div class="rv-flag" style="color:var(--pos)">Es una cuota de un gasto en cuotas que ya anotaste para '+esc(ownerName(r.own))+': se anota ahora y no se duplica.</div>':'')
       +(r.cuota||r.flag?'<div class="rv-flag">'+(r.cuota?'Cuota '+esc(r.cuota)+'. ':'')+esc(r.flag)+'</div>':'')
       +(S.owners.length>1?'<label class="rv-own">De quién es <select data-f="own" aria-label="De quién es el consumo">'+opt('','Mío',!r.own)+liveOwners(r.own).filter(o=>o.id!=='yo').map(o=>opt(o.id,o.name,r.own===o.id)).join('')+'</select></label>':'')

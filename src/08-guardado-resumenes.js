@@ -175,7 +175,7 @@ function stmtAnalyze(){
   if(!/^\d{4}-\d{2}$/.test(M.period)){err.textContent='Elegí el mes del resumen.';return;}
   if(!M.text.trim()){err.textContent='Pegá el texto del resumen o elegí «Cargar a mano».';return;}
   if(!M.totalStr){ const mt=stmtMeta(M.text); if(mt.total) M.totalStr=mt.total; if(mt.totalUsd&&!M.totalUsdStr) M.totalUsdStr=mt.totalUsd; }
-  M.rows=parseStatement(M.text,M.period); M.parsedZero=false; M.preDone=false;
+  M.rows=parseStatement(M.text,M.period); M.parsedZero=false; M.preDone=false; M.etiosDone=false;
   if(M.paid==='usd') M.rows.forEach(r=>{ if(r.rg){ r.inc=false; r.flag='No se cobra si pagás los dólares con dólares: se descuenta de tus gastos.'; } });
   if(!M.rows.length){ M.rows=[blankRow(M.period)]; M.parsedZero=true; }
   M.step=2; stmtShowReview();
@@ -183,7 +183,7 @@ function stmtAnalyze(){
 function stmtManual(){
   const M=S.modal; stmtRead();
   if(!/^\d{4}-\d{2}$/.test(M.period)){ $('#s-err').textContent='Elegí el mes del resumen.'; return; }
-  M.rows=[blankRow(M.period)]; M.parsedZero=false; M.preDone=false; M.step=2; stmtShowReview();
+  M.rows=[blankRow(M.period)]; M.parsedZero=false; M.preDone=false; M.etiosDone=false; M.step=2; stmtShowReview();
 }
 function reviewField(t){
   const M=S.modal; if(!M||!M.rows) return;
@@ -233,6 +233,7 @@ function importReview(){
     const e={id:newId(),card:M.card,stmt:st.id,period:M.period,date:r.date,desc:(r.desc||'').trim()||'Sin descripción',cents:r.cents,cat:r.cat};
     if(r.cuota) e.cuota=r.cuota;
     if(r.usd) e.cur='USD';
+    if(r.etios&&!r.usd){ e.etios=r.etios; e.det=r.etiosDet; }
     S.exp.push(e);
     if(r.cat!=='sin'&&r.cat!==r.auto&&learnRule(e.desc,r.cat)) learned++;
   });

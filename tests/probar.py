@@ -317,6 +317,30 @@ def main():
             ev("()=>{__T.S.plans=[];__T.S.tab='resumen';__T.S.rOwner='yo';__T.render()}")
             chequear('el aviso de gastos de tarjeta pendientes se ve en Inicio', 'todavía no figuran' in ev("()=>document.querySelector('#view').textContent") or ev("()=>__T.prePend().length")==0)
 
+            print('Cargas del Etios (datos inventados)')
+            ev("""()=>{localStorage.setItem('etios-nafta-v1',JSON.stringify([
+              {id:'e1',fh:'2027-02-03T09:10',litros:40.5,plata:52000,km:85200,tipo:'ciudad',lleno:true},
+              {id:'e2',fh:'2027-02-14T18:00',litros:30,plata:39000,km:85600,tipo:'ruta',lleno:true},
+              {id:'e3',fh:'2027-02-25T08:00',litros:20,plata:26000,km:85900,tipo:'mixto',lleno:false}]));}""")
+            abrir('2027-02', [fila('2027-02-03','Merpago*appypfcomb','',5200000), fila('2027-02-15','Appypf 01095 combust','',3880000),
+                              fila('2027-02-15','Appypf 01142 tienda','',450000), fila('2027-02-20','Mercpago*appypfcomb','',3000000)])
+            r = ev("()=>__T.S.modal.rows.map(r=>[r.etios||null,!!r.etiosAprox,!!r.fuel,r.cat])")
+            chequear('la nafta del resumen se cruza con el Etios por monto y fecha', [x[0] for x in r] == ['e1','e2',None,None], r)
+            chequear('un monto apenas distinto se reconoce pero avisa', r[1][1] and not r[0][1], r)
+            chequear('lo de la tienda de YPF no se toma como nafta', r[2][2] is False, r)
+            txt = ev("()=>document.querySelector('#modal').textContent")
+            chequear('avisa la nafta que no está en el Etios y la carga del Etios que no está en el resumen', 'no está en el Etios' in txt and '1 carga del Etios' in txt)
+            chequear('la nafta reconocida queda en Transporte y combustible', r[0][3] == 'transporte', r)
+            pg.click('[data-act=rv-import]'); pg.wait_for_timeout(300)
+            ex = ev("()=>__T.S.exp.filter(e=>e.period==='2027-02').map(e=>[e.etios||null,e.det||''])")
+            chequear('al importar queda ligada a la carga, con litros y km', ['e1','Nafta Etios · 40,5 L · 85.200 km'] in ex and len(ex) == 4, ex)
+            abrir('2027-02', [fila('2027-02-03','Merpago*appypfcomb','',5200000)])
+            chequear('si se vuelve a subir el mismo resumen la carga se puede volver a usar', ev("()=>__T.S.modal.rows[0].etios") == 'e1')
+            ev("()=>{__T.S.modal=null;document.querySelector('#modal').innerHTML=''}")
+            ev("()=>{__T.S.cards=[{id:'visa4',name:'Otra'}];__T.openModal('stmt',{step:2,paid:'pesos',card:'visa4',period:'2027-02',text:'',totalStr:'',cardAcc:'',rows:[{inc:true,date:'2027-02-03',desc:'YPF combust',amtStr:'52000',cents:5200000,cat:'sin',auto:'sin',cuota:'',usd:false,flag:''}]});__T.stmtShowReview();}")
+            chequear('una carga ya usada en otro resumen no se usa dos veces', ev("()=>__T.S.modal.rows[0].etios") is None)
+            ev("()=>{__T.S.modal=null;document.querySelector('#modal').innerHTML='';localStorage.removeItem('etios-nafta-v1')}")
+
             rm = ev("()=>['cafe 500 reserva montonera','mp reserva montonera 700','almuerzo catequesis 12000 efe','gasto montonera 500 efectivo'].map(t=>{const r=QuickMov.parse(t,{accounts:__T.S.accounts,owners:__T.S.owners,today:'2026-11-23'});return [r.acc,r.owner]})")
             chequear('la caja elige la cuenta «Reserva Montonera» y no la toma solo como dueño', rm[0][0]=='mercado-pago-reserva-montonera' and rm[1][0]=='mercado-pago-reserva-montonera' and rm[2]==['efectivo','catequesis'] and rm[3]==['efectivo','montonera'], rm)
 

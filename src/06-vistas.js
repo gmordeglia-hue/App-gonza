@@ -487,7 +487,7 @@ function viewTarj(){
   }).join('')+'</div>'+(S.xCat?'<p class="muted" style="margin:6px 0 0;font-size:13px">Mostrando solo «'+esc(catName(S.xCat))+'». <button class="link" data-act="xcat" data-id="">Ver todo</button></p>':'')+'</section>';
   const lines=scopedAll.filter(e=>!S.xCat||e.cat===S.xCat).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
   h+='<section><h2 class="sec">Consumos</h2><div class="list-head">'+lines.slice(0,S.xLimit).map(e=>{
-    const tags=esc(cardName(e.card))+(e.cuota?' · Cuota '+esc(e.cuota):'');
+    const tags=esc(cardName(e.card))+(e.cuota?' · Cuota '+esc(e.cuota):'')+(e.det?' · ⛽ '+esc(e.det.replace(/^Nafta /,'')):'');
     const acts=S.confirmX===e.id
       ?'<span>¿Eliminar?</span><button class="link danger" data-act="xdel-yes" data-id="'+esc(e.id)+'">Sí</button><button class="link" data-act="xdel-no">No</button>'
       :'<select class="x-cat" data-xcat="'+esc(e.id)+'" aria-label="Categoría de '+esc(e.desc)+'">'+S.cats.map(c=>opt(c.id,c.name,c.id===e.cat)).join('')+'</select><button class="link danger" data-act="xdel-ask" data-id="'+esc(e.id)+'">Eliminar</button>';

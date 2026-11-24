@@ -1070,7 +1070,7 @@ function viewTarj(){
   }).join('')+'</div>'+(S.xCat?'<p class="muted" style="margin:6px 0 0;font-size:13px">Mostrando solo «'+esc(catName(S.xCat))+'». <button class="link" data-act="xcat" data-id="">Ver todo</button></p>':'')+'</section>';
   const lines=scopedAll.filter(e=>!S.xCat||e.cat===S.xCat).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
   h+='<section><h2 class="sec">Consumos</h2><div class="list-head">'+lines.slice(0,S.xLimit).map(e=>{
-    const tags=esc(cardName(e.card))+(e.cuota?' · Cuota '+esc(e.cuota):'');
+    const tags=esc(cardName(e.card))+(e.cuota?' · Cuota '+esc(e.cuota):'')+(e.det?' · ⛽ '+esc(e.det.replace(/^Nafta /,'')):'');
     const acts=S.confirmX===e.id
       ?'<span>¿Eliminar?</span><button class="link danger" data-act="xdel-yes" data-id="'+esc(e.id)+'">Sí</button><button class="link" data-act="xdel-no">No</button>'
       :'<select class="x-cat" data-xcat="'+esc(e.id)+'" aria-label="Categoría de '+esc(e.desc)+'">'+S.cats.map(c=>opt(c.id,c.name,c.id===e.cat)).join('')+'</select><button class="link danger" data-act="xdel-ask" data-id="'+esc(e.id)+'">Eliminar</button>';
@@ -1600,6 +1600,39 @@ function matchPre(M){
     if(pl){ r.planAhead=pl.id; r.own=Object.keys(pl.data.for).find(z=>z!==(pl.data.owner||'yo')); }
   });
 }
+/* ----- Cargas de nafta del Etios: la app Etios las guarda en este mismo celular (misma dirección de GitHub Pages).
+   Solo se leen, nunca se cambian. Al subir el resumen se cruzan con los renglones de nafta por monto y fecha. ----- */
+const ETIOS_KEY='etios-nafta-v1';
+function etiosCargas(){ try{ const a=JSON.parse(localStorage.getItem(ETIOS_KEY)||'[]'); return Array.isArray(a)?a.filter(c=>c&&c.id&&c.plata>0&&typeof c.fh==='string'&&/^\d{4}-\d{2}-\d{2}/.test(c.fh)):[]; }catch(_){ return []; } }
+const isFuel=d=>{ const n=normDesc(d); return /ypf|combust|nafta|shell|axion/.test(n)&&!/tienda/.test(n); };
+const etiosDet=c=>'Nafta Etios'+(c.litros>0?' · '+(+c.litros).toLocaleString('es-AR',{maximumFractionDigits:2})+' L':'')+(c.km>0?' · '+Math.round(c.km).toLocaleString('es-AR')+' km':'');
+function matchEtios(M){
+  if(M.etiosDone) return; M.etiosDone=true;
+  const L=etiosCargas(); M.etiosN=L.length; M.etiosSobran=0; if(!L.length) return;
+  const st=S.stmts.find(x=>x.card===M.card&&x.period===M.period);
+  /* Una carga ya usada en otro resumen no se vuelve a usar (si se sube de nuevo este mismo, se libera). */
+  const used=new Set(S.exp.filter(e=>e.etios&&(!st||e.stmt!==st.id)).map(e=>e.etios));
+  const free=L.filter(c=>!used.has(c.id));
+  const cand=[];
+  M.rows.forEach((r,i)=>{
+    r.fuel=false; r.etios=null; r.etiosDet=''; r.etiosAprox=false;
+    if(!r.inc||r.usd||r.own||isNaN(r.cents)||!r.date||!isFuel(r.desc)) return;
+    r.fuel=true;
+    free.forEach(c=>{
+      const cc=Math.round(c.plata*100), d=Math.abs(daysBetween(c.fh.slice(0,10),r.date)); if(d>3) return;
+      const dif=Math.abs(cc-r.cents)/cc; if(dif>0.03) return;
+      cand.push({i:i,c:c,score:d+(cc===r.cents?0:10)+dif*100});
+    });
+  });
+  cand.sort((a,b)=>a.score-b.score);
+  const uR={}, uC={};
+  cand.forEach(x=>{
+    if(uR[x.i]||uC[x.c.id]) return; uR[x.i]=1; uC[x.c.id]=1;
+    const r=M.rows[x.i]; r.etios=x.c.id; r.etiosDet=etiosDet(x.c); r.etiosAprox=Math.round(x.c.plata*100)!==r.cents;
+    if((!r.cat||r.cat==='sin')&&S.cats.some(c=>c.id==='transporte')) r.cat='transporte';
+  });
+  if(M.rows.some(r=>r.fuel)) M.etiosSobran=free.filter(c=>!uC[c.id]&&c.fh.slice(0,7)===M.period).length;
+}
 /* Anota ahora las cuotas de un plan hasta la k (la k queda ligada al resumen). */
 function planAdvanceTo(pl,k,stmtId,date,cat){
   for(let j=pl.done+1;j<=k;j++){
@@ -1974,7 +2007,8 @@ function stmtReview(){
   if(M.rows.length===1&&M.parsedZero) h+='<div class="note" style="margin-top:10px">No encontré consumos en ese texto. Podés cargarlos a mano abajo, o probar copiando solo la tabla de consumos.</div>';
   const cAccs=liveAccs().filter(a=>a.kind==='card'&&curOf(a.id)==='ARS');
   if(!M.cardAcc) M.cardAcc=cardAccFor(M.card);
-  matchPre(M);
+  matchPre(M); matchEtios(M);
+  if(M.etiosSobran) h+='<div class="note" style="margin-top:10px">⛽ Hay '+M.etiosSobran+(M.etiosSobran===1?' carga':' cargas')+' del Etios de este mes que no aparece'+(M.etiosSobran===1?'':'n')+' en este resumen. Quizás la pagaste de otra forma, o entra en el resumen que viene.</div>';
   if(S.owners.length>1) h+='<div class="note" style="margin-top:10px">Si un consumo es de otro dueño, elegilo en «De quién es». No cuenta como gasto tuyo: se anota como deuda en la tarjeta.'+(cAccs.length?'<label for="rv-acc" style="margin-top:8px">Anotarlos en la tarjeta</label><select id="rv-acc">'+cAccs.map(a=>opt(a.id,accLabel(a),a.id===M.cardAcc)).join('')+'</select>':'<br><strong>Primero creá una cuenta marcada como tarjeta de crédito en Ajustes.</strong>')+'</div>';
   h+='<div class="rv-sum" id="rv-sum"></div><div id="rv-rows">';
   M.rows.forEach((r,i)=>{
@@ -1983,6 +2017,8 @@ function stmtReview(){
       +'<input data-f="desc" class="rv-desc" autocomplete="off" aria-label="Descripción" placeholder="Descripción" value="'+esc(r.desc)+'">'
       +'<select data-f="cat" class="rv-cat" aria-label="Categoría">'+catOpts(r.cat)+'</select>'
       +(r.pre?'<div class="rv-flag" style="color:var(--pos)">Ya lo anotaste antes como gasto de '+esc(ownerName(r.own))+': se reconoce y no se duplica.'+(r.preAmb?' <b style="color:var(--warn)">Ojo: hay otro consumo del mismo monto; revisá que sea este.</b>':'')+'</div>':'')
+      +(r.etios?'<div class="rv-flag" style="color:var(--pos)">⛽ Coincide con tu carga del Etios: '+esc(r.etiosDet)+'.'+(r.etiosAprox?' <b style="color:var(--warn)">El monto no es exacto: revisá que sea esta.</b>':'')+'</div>'
+        :(r.fuel&&M.etiosN?'<div class="rv-flag" style="color:var(--warn)">⛽ Esta carga de nafta no está en el Etios: ¿te olvidaste de anotarla, o fue otro auto?</div>':''))
       +(r.planAhead?'<div class="rv-flag" style="color:var(--pos)">Es una cuota de un gasto en cuotas que ya anotaste para '+esc(ownerName(r.own))+': se anota ahora y no se duplica.</div>':'')
       +(r.cuota||r.flag?'<div class="rv-flag">'+(r.cuota?'Cuota '+esc(r.cuota)+'. ':'')+esc(r.flag)+'</div>':'')
       +(S.owners.length>1?'<label class="rv-own">De quién es <select data-f="own" aria-label="De quién es el consumo">'+opt('','Mío',!r.own)+liveOwners(r.own).filter(o=>o.id!=='yo').map(o=>opt(o.id,o.name,r.own===o.id)).join('')+'</select></label>':'')
@@ -2341,7 +2377,7 @@ function stmtAnalyze(){
   if(!/^\d{4}-\d{2}$/.test(M.period)){err.textContent='Elegí el mes del resumen.';return;}
   if(!M.text.trim()){err.textContent='Pegá el texto del resumen o elegí «Cargar a mano».';return;}
   if(!M.totalStr){ const mt=stmtMeta(M.text); if(mt.total) M.totalStr=mt.total; if(mt.totalUsd&&!M.totalUsdStr) M.totalUsdStr=mt.totalUsd; }
-  M.rows=parseStatement(M.text,M.period); M.parsedZero=false; M.preDone=false;
+  M.rows=parseStatement(M.text,M.period); M.parsedZero=false; M.preDone=false; M.etiosDone=false;
   if(M.paid==='usd') M.rows.forEach(r=>{ if(r.rg){ r.inc=false; r.flag='No se cobra si pagás los dólares con dólares: se descuenta de tus gastos.'; } });
   if(!M.rows.length){ M.rows=[blankRow(M.period)]; M.parsedZero=true; }
   M.step=2; stmtShowReview();
@@ -2349,7 +2385,7 @@ function stmtAnalyze(){
 function stmtManual(){
   const M=S.modal; stmtRead();
   if(!/^\d{4}-\d{2}$/.test(M.period)){ $('#s-err').textContent='Elegí el mes del resumen.'; return; }
-  M.rows=[blankRow(M.period)]; M.parsedZero=false; M.preDone=false; M.step=2; stmtShowReview();
+  M.rows=[blankRow(M.period)]; M.parsedZero=false; M.preDone=false; M.etiosDone=false; M.step=2; stmtShowReview();
 }
 function reviewField(t){
   const M=S.modal; if(!M||!M.rows) return;
@@ -2399,6 +2435,7 @@ function importReview(){
     const e={id:newId(),card:M.card,stmt:st.id,period:M.period,date:r.date,desc:(r.desc||'').trim()||'Sin descripción',cents:r.cents,cat:r.cat};
     if(r.cuota) e.cuota=r.cuota;
     if(r.usd) e.cur='USD';
+    if(r.etios&&!r.usd){ e.etios=r.etios; e.det=r.etiosDet; }
     S.exp.push(e);
     if(r.cat!=='sin'&&r.cat!==r.auto&&learnRule(e.desc,r.cat)) learned++;
   });

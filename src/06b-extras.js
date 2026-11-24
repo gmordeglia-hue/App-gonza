@@ -391,6 +391,39 @@ function matchPre(M){
     if(pl){ r.planAhead=pl.id; r.own=Object.keys(pl.data.for).find(z=>z!==(pl.data.owner||'yo')); }
   });
 }
+/* ----- Cargas de nafta del Etios: la app Etios las guarda en este mismo celular (misma dirección de GitHub Pages).
+   Solo se leen, nunca se cambian. Al subir el resumen se cruzan con los renglones de nafta por monto y fecha. ----- */
+const ETIOS_KEY='etios-nafta-v1';
+function etiosCargas(){ try{ const a=JSON.parse(localStorage.getItem(ETIOS_KEY)||'[]'); return Array.isArray(a)?a.filter(c=>c&&c.id&&c.plata>0&&typeof c.fh==='string'&&/^\d{4}-\d{2}-\d{2}/.test(c.fh)):[]; }catch(_){ return []; } }
+const isFuel=d=>{ const n=normDesc(d); return /ypf|combust|nafta|shell|axion/.test(n)&&!/tienda/.test(n); };
+const etiosDet=c=>'Nafta Etios'+(c.litros>0?' · '+(+c.litros).toLocaleString('es-AR',{maximumFractionDigits:2})+' L':'')+(c.km>0?' · '+Math.round(c.km).toLocaleString('es-AR')+' km':'');
+function matchEtios(M){
+  if(M.etiosDone) return; M.etiosDone=true;
+  const L=etiosCargas(); M.etiosN=L.length; M.etiosSobran=0; if(!L.length) return;
+  const st=S.stmts.find(x=>x.card===M.card&&x.period===M.period);
+  /* Una carga ya usada en otro resumen no se vuelve a usar (si se sube de nuevo este mismo, se libera). */
+  const used=new Set(S.exp.filter(e=>e.etios&&(!st||e.stmt!==st.id)).map(e=>e.etios));
+  const free=L.filter(c=>!used.has(c.id));
+  const cand=[];
+  M.rows.forEach((r,i)=>{
+    r.fuel=false; r.etios=null; r.etiosDet=''; r.etiosAprox=false;
+    if(!r.inc||r.usd||r.own||isNaN(r.cents)||!r.date||!isFuel(r.desc)) return;
+    r.fuel=true;
+    free.forEach(c=>{
+      const cc=Math.round(c.plata*100), d=Math.abs(daysBetween(c.fh.slice(0,10),r.date)); if(d>3) return;
+      const dif=Math.abs(cc-r.cents)/cc; if(dif>0.03) return;
+      cand.push({i:i,c:c,score:d+(cc===r.cents?0:10)+dif*100});
+    });
+  });
+  cand.sort((a,b)=>a.score-b.score);
+  const uR={}, uC={};
+  cand.forEach(x=>{
+    if(uR[x.i]||uC[x.c.id]) return; uR[x.i]=1; uC[x.c.id]=1;
+    const r=M.rows[x.i]; r.etios=x.c.id; r.etiosDet=etiosDet(x.c); r.etiosAprox=Math.round(x.c.plata*100)!==r.cents;
+    if((!r.cat||r.cat==='sin')&&S.cats.some(c=>c.id==='transporte')) r.cat='transporte';
+  });
+  if(M.rows.some(r=>r.fuel)) M.etiosSobran=free.filter(c=>!uC[c.id]&&c.fh.slice(0,7)===M.period).length;
+}
 /* Anota ahora las cuotas de un plan hasta la k (la k queda ligada al resumen). */
 function planAdvanceTo(pl,k,stmtId,date,cat){
   for(let j=pl.done+1;j<=k;j++){
