@@ -64,7 +64,9 @@ document.addEventListener('click',e=>{
   else if(act==='more'){ S.limit+=100; render(); }
   else if(act==='export') exportBackup();
   else if(act==='import'){ const f=$('#imp-file'); if(f) f.click(); }
-  else if(act==='imp-yes'){ const cerr=(S.closed||[]).slice(); applyData(S.modal.data); S.closed=Array.from(new Set((S.closed||[]).concat(cerr))); ensureCards(); applyPlans(); applyFixed(); persist(); closeModal(); onData(); toast('Copia restaurada'); }
+  else if(act==='imp-yes') restoreBackup(S.modal.data,S.modal.mig);
+  else if(act==='antes-undo'){ if(!b.dataset.sure){ b.dataset.sure='1'; b.textContent='Tocá otra vez para deshacer'; return; } undoRestore(); }
+  else if(act==='antes-del'){ dropAntes(); render(); toast('Copia borrada'); }
   else if(act==='chart'){ S.chartAcc=id||''; render(); }
   else if(act==='owner-new') openModal('owner',{o:null});
   else if(act==='owner-edit') openModal('owner',{o:S.owners.find(x=>x.id===id)});
@@ -111,7 +113,7 @@ document.addEventListener('click',e=>{
   else if(act==='xdel-yes'){ S.confirmX=''; S.exp=S.exp.filter(x=>x.id!==id); persist(); render(); toast('Consumo eliminado'); }
   else if(act==='stmt-del-ask'){ S.confirmS=id; render(); }
   else if(act==='stmt-del-no'){ S.confirmS=''; render(); }
-  else if(act==='stmt-del-yes'){ S.confirmS=''; S.exp=S.exp.filter(x=>x.stmt!==id); S.stmts=S.stmts.filter(x=>x.id!==id); persist(); render(); toast('Resumen eliminado'); }
+  else if(act==='stmt-del-yes'){ S.confirmS=''; delStmt(id); }
 });
 document.addEventListener('submit',e=>{
   e.preventDefault();
@@ -171,6 +173,7 @@ function init(){
   try{ S.hide=localStorage.getItem('cuentas-hide')==='1'; }catch(_){}
   readHash();
   if(!loadStore()) return;
+  antesInfo(); /* borra la copia de antes de restaurar si ya venció */
   S.xPeriod='';
   applyPlans(); applyFixed(); if(ensureCards()) persist();
   onData();
@@ -179,5 +182,5 @@ function init(){
   try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(_){}
 }
 /* Solo para las pruebas automáticas (tests/probar.py): se activa abriendo la app con ?test en la dirección. */
-if(location.search.indexOf('test')>-1) window.__T={S:S,prePend:prePend,matchPre:matchPre,ownerBusy:ownerBusy,soloOf:soloOf,commitData:commitData,debtAge:debtAge,ensureCards:ensureCards,extraAct:extraAct,delMov:delMov,categorize:categorize,informeData:informeData,applyFixed:applyFixed,budgetSpent:budgetSpent,isClosed:isClosed,monthSpend:monthSpend,debtPairs:debtPairs,balance:balance,accById:accById,persist:persist,onData:onData,render:render,todayStr:todayStr,openModal:openModal,stmtShowReview:stmtShowReview,cardReminder:cardReminder,cardAccFor:cardAccFor,applyPlans:applyPlans,ownerBalances:ownerBalances,normalizeData:normalizeData,backupJson:backupJson};
+if(location.search.indexOf('test')>-1) window.__T={S:S,prePend:prePend,matchPre:matchPre,ownerBusy:ownerBusy,soloOf:soloOf,commitData:commitData,debtAge:debtAge,ensureCards:ensureCards,extraAct:extraAct,delMov:delMov,categorize:categorize,informeData:informeData,applyFixed:applyFixed,budgetSpent:budgetSpent,isClosed:isClosed,monthSpend:monthSpend,debtPairs:debtPairs,balance:balance,accById:accById,persist:persist,onData:onData,render:render,todayStr:todayStr,openModal:openModal,stmtShowReview:stmtShowReview,cardReminder:cardReminder,cardAccFor:cardAccFor,applyPlans:applyPlans,ownerBalances:ownerBalances,normalizeData:normalizeData,backupJson:backupJson,isOurBackup:isOurBackup,antesInfo:antesInfo,delStmt:delStmt};
 init();

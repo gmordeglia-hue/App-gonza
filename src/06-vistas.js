@@ -442,9 +442,9 @@ function mgmtBlock(){
   let h='';
   if(S.stmts.length){
     h+='<section><h2 class="sec">Resúmenes cargados</h2><div class="list-head">'+S.stmts.slice().sort((a,b)=>a.period<b.period?1:-1).map(s=>{
-      const l=S.exp.filter(e=>e.stmt===s.id);
+      const l=S.exp.filter(e=>e.stmt===s.id), nO=S.confirmS===s.id?stmtOthers(s.id).length:0;
       const acts=S.confirmS===s.id
-        ?'<span>¿Eliminar el resumen y sus '+l.length+' consumos?</span><button class="link danger" data-act="stmt-del-yes" data-id="'+esc(s.id)+'">Sí, eliminar</button><button class="link" data-act="stmt-del-no">No</button>'
+        ?'<span>¿Eliminar el resumen y sus '+l.length+' consumos?'+(nO?' '+othersTxt(nO,' gasto para otro dueño no se borra: vuelve',' gastos para otros dueños no se borran: vuelven')+' a esperar el resumen.':'')+'</span><button class="link danger" data-act="stmt-del-yes" data-id="'+esc(s.id)+'">Sí, eliminar</button><button class="link" data-act="stmt-del-no">No</button>'
         :'<button class="link" data-act="stmt-month" data-id="'+esc(s.id)+'">Cambiar mes</button><button class="link danger" data-act="stmt-del-ask" data-id="'+esc(s.id)+'">Eliminar resumen</button>';
       return '<div class="mov"><div><div class="mov-t">'+esc(cardName(s.card))+' · '+esc(monthLabel(s.period))+'</div><div class="mov-s">'+l.length+' consumos</div></div><div class="mov-amt">'+amt(money(sumC(l.filter(e=>e.cur!=='USD'))))+(l.some(e=>e.cur==='USD')?'<div>'+amt(money(sumC(l.filter(e=>e.cur==='USD')),'USD'),'muted')+'</div>':'')+'</div><div class="mov-actions">'+acts+'</div></div>';
     }).join('')+'</div></section>';

@@ -252,4 +252,16 @@ function setExpCat(id,cat){
   persist(); render();
   toast(n?'Categoría guardada · también cambié '+n+' consumos parecidos':'Categoría guardada');
 }
-
+/* Eliminar un resumen: borra sus consumos y les saca la marca de resumen a los movimientos ligados.
+   Así los gastos para otros dueños vuelven a «esperando resumen» y, si se sube de nuevo, no se duplica la deuda.
+   No toca la nafta del Etios ni los saldos. Si el resumen toca un mes cerrado, no se borra. */
+const stmtOthers=id=>S.movs.filter(m=>m.stmt===id&&m.type==='out'&&isCard(m.account)&&m.for&&Object.keys(m.for).some(k=>k!==(m.owner||'yo')));
+const othersTxt=(n,uno,varios)=>n+(n===1?uno:varios);
+function delStmt(id){
+  const s=S.stmts.find(x=>x.id===id), L=S.movs.filter(m=>m.stmt===id);
+  if(s&&(isClosed(s.period)||L.some(m=>isClosed(m.date)))){ render(); toast('Ese resumen toca un mes cerrado. Reabrilo desde «Informe por dueño» para poder eliminarlo.',4500); return; }
+  const n=stmtOthers(id).length;
+  L.forEach(m=>{ delete m.stmt; });
+  S.exp=S.exp.filter(x=>x.stmt!==id); S.stmts=S.stmts.filter(x=>x.id!==id); persist(); render();
+  toast(n?'Resumen eliminado · '+othersTxt(n,' gasto para otro dueño volvió',' gastos para otros dueños volvieron')+' a esperar el resumen':'Resumen eliminado',n?4500:0);
+}

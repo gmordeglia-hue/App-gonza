@@ -207,10 +207,16 @@ function ownersBreak(ob,cur){
 
 /* ---------- Almacenamiento en el celular ---------- */
 const KEY='mis-cuentas-v1', BK='mis-cuentas-copia';
+/* Copia interna de cómo estaba todo antes de restaurar: una sola, se borra sola a los ANTES_DIAS días
+   o cuando se baja una copia nueva a mano. */
+const KEY_ANTES='mis-cuentas-antes-de-restaurar', ANTES_DIAS=30;
+/* Lista única de lo que se guarda (la usan el guardado en el celular y la copia de seguridad). */
+const DATA_KEYS=['accounts','movs','owners','cards','cats','rules','stmts','exp','hlds','ops','claims','plans','fixed','budgets','goals','closed'];
+function dataSnap(head){ const o=Object.assign({},head); DATA_KEYS.forEach(k=>{o[k]=S[k]}); o.pc=1; return o; }
 let storeOK=true;
 function persist(){
   try{
-    localStorage.setItem(KEY,JSON.stringify({v:5,accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans,fixed:S.fixed,budgets:S.budgets,goals:S.goals,closed:S.closed,pc:1}));
+    localStorage.setItem(KEY,JSON.stringify(dataSnap({v:5})));
     storeOK=true; return true;
   }catch(_){ storeOK=false; return false; }
 }
@@ -320,7 +326,7 @@ function autoBackupDue(){
 }
 function armAutoBackup(){
   /* Se dispara después del toque (no al apoyar el dedo): si se redibuja la pantalla entre el apoyo y el toque, se perdía el primer toque. */
-  const go=()=>{ document.removeEventListener('click',go,true); setTimeout(()=>{ if(!S.error&&autoBackupDue()) exportBackup('Copia automática descargada'); },0); };
+  const go=()=>{ document.removeEventListener('click',go,true); setTimeout(()=>{ if(!S.error&&autoBackupDue()) exportBackup('Copia automática descargada',true); },0); };
   document.addEventListener('click',go,true);
 }
 function backupBlock(){
@@ -329,6 +335,7 @@ function backupBlock(){
     +'<p class="muted" style="margin:0 0 8px"><strong style="color:var(--ink)">Copia automática (solo en el celular):</strong> cada '+AUTO_BK_DAYS+' días, la primera vez que tocás la app se descarga sola una copia en la carpeta Descargas del celular. Podés borrar las viejas y quedarte con las últimas.</p>'
     +'<p class="muted" style="margin:0 0 8px">«Enviar copia a Drive» abre el menú de compartir: elegís Drive y una carpeta, y queda guardada fuera del celular. Tocá ese botón cuando la app te avise.</p>'
     +'<p style="margin:0 0 10px">'+(l?'Última copia: '+fmtDate(l):'Todavía no hiciste ninguna copia.')+'</p>'
+    +antesBlock()
     +'<div class="actions">'+(canShareFile()?'<button class="btn primary" data-act="share-bk">Enviar copia a Drive</button>':'')+'<button class="btn" data-act="export">Guardar copia en el celular</button><button class="btn ghost" data-act="import">Restaurar copia</button></div>'
     +'<input type="file" id="imp-file" accept=".json,application/json" hidden></section>';
 }
@@ -343,13 +350,15 @@ async function shareBackup(){
     toast('Copia enviada'); render();
   }catch(e){ if(e&&e.name!=='AbortError') toast('No se pudo enviar la copia'); }
 }
-function backupJson(){ return JSON.stringify({v:5,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans,fixed:S.fixed,budgets:S.budgets,goals:S.goals,closed:S.closed,pc:1}); }
-function exportBackup(msg){
-  const data=JSON.stringify({v:5,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans,fixed:S.fixed,budgets:S.budgets,goals:S.goals,closed:S.closed,pc:1});
+function backupJson(){ return JSON.stringify(dataSnap({app:'mis-cuentas',v:5,exportedAt:new Date().toISOString()})); }
+/* auto=true: copia automática (no borra la copia interna de antes de restaurar). */
+function exportBackup(msg,auto){
+  const data=backupJson();
   const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
   const a=document.createElement('a'); a.href=url; a.download='mis-cuentas-'+todayStr()+'.json';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
   try{ localStorage.setItem(BK,todayStr()); }catch(_){}
+  if(auto!==true) dropAntes();
   toast(typeof msg==='string'?msg:'Copia descargada'); render();
 }
 function readImport(inp){
@@ -358,9 +367,10 @@ function readImport(inp){
   r.onload=()=>{
     try{
       const d=JSON.parse(String(r.result));
+      if(!isOurBackup(d)) throw new Error('ajeno');
       const o=normalizeData(d,false);
       if(!o.accounts.length) throw new Error('vacío');
-      openModal('imp',{data:o});
+      openModal('imp',{data:o,mig:!(d.v>=5)});
     }catch(_){ toast('Ese archivo no es una copia de Mis cuentas'); }
   };
   r.onerror=()=>toast('No se pudo leer el archivo');
@@ -368,9 +378,62 @@ function readImport(inp){
 }
 function impModal(d){
   const o=d.data;
-  return '<div class="sheet"><h2>Restaurar copia</h2><p class="hint">La copia tiene '+o.accounts.length+' cuentas, '+o.movs.length+' movimientos y '+o.exp.length+' consumos de tarjeta. Va a reemplazar todo lo que hay ahora en este celular ('+S.accounts.length+' cuentas, '+S.movs.length+' movimientos y '+S.exp.length+' consumos).</p>'+((S.closed||[]).length?'<p class="hint">Los meses cerrados ('+S.closed.map(monthLabel).join(', ')+') siguen cerrados, pero lo que hay adentro vuelve a como estaba en la copia.</p>':'')+'<div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button><button type="button" class="btn danger" data-act="imp-yes">Reemplazar todo</button></div></div>';
+  const menos=S.movs.length-o.movs.length;
+  return '<div class="sheet"><h2>Restaurar copia</h2><p class="hint">La copia tiene '+o.accounts.length+' cuentas, '+o.movs.length+' movimientos y '+o.exp.length+' consumos de tarjeta. Va a reemplazar todo lo que hay ahora en este celular ('+S.accounts.length+' cuentas, '+S.movs.length+' movimientos y '+S.exp.length+' consumos).</p>'+(menos>0?'<p class="note warn" style="margin:0 0 10px"><strong>Ojo: la copia tiene '+menos+(menos===1?' movimiento':' movimientos')+' menos que lo que hay ahora. Si la restaurás, se pierden (después podés deshacerlo).</strong></p>':'')+((S.closed||[]).length?'<p class="hint">Los meses cerrados ('+S.closed.map(monthLabel).join(', ')+') siguen cerrados, pero lo que hay adentro vuelve a como estaba en la copia.</p>':'')+'<div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button><button type="button" class="btn danger" data-act="imp-yes">Reemplazar todo</button></div></div>';
 }
-
+/* ¿Es una copia de Mis cuentas? Las nuevas traen app:'mis-cuentas'. Las viejas (sin marca) se aceptan si traen
+   versión, fecha de exportación, lista de movimientos y al menos una cuenta con id y nombre.
+   Se revisa el archivo tal como vino, ANTES de completarlo con valores por defecto. */
+function isOurBackup(d){
+  if(!d||typeof d!=='object'||Array.isArray(d)) return false;
+  if('app' in d) return d.app==='mis-cuentas';
+  return typeof d.v==='number'&&typeof d.exportedAt==='string'&&Array.isArray(d.movs)&&Array.isArray(d.accounts)&&d.accounts.some(a=>a&&typeof a.id==='string'&&typeof a.name==='string');
+}
+function dropAntes(){ try{ localStorage.removeItem(KEY_ANTES); }catch(_){} }
+/* Fecha de la copia interna de antes de restaurar, o null si no hay. Si ya venció, la borra. */
+function antesInfo(){
+  let d=null; try{ d=JSON.parse(localStorage.getItem(KEY_ANTES)||'null'); }catch(_){ return null; }
+  if(!d||typeof d.antes!=='string') return null;
+  if(daysBetween(d.antes,todayStr())>=ANTES_DIAS){ dropAntes(); return null; }
+  return {fecha:d.antes};
+}
+function antesBlock(){
+  const a=antesInfo(); if(!a) return '';
+  return '<div class="note" style="margin:0 0 10px"><p style="margin:0 0 8px;color:var(--ink)">Antes de restaurar el '+fmtDate(a.fecha,true)+' guardé cómo estaba todo.</p><div class="actions"><button class="btn danger" data-act="antes-undo">Deshacer la restauración</button><button class="btn ghost" data-act="antes-del">Borrar esa copia</button></div></div>';
+}
+/* ¿Quedó bien guardado en el celular lo que hay en pantalla? */
+function savedOK(){ try{ const d=JSON.parse(localStorage.getItem(KEY)); return !!d&&Array.isArray(d.movs)&&d.movs.length===S.movs.length&&Array.isArray(d.accounts)&&d.accounts.length===S.accounts.length; }catch(_){ return false; } }
+function keepOld(){ const o={loans:S.loans}; DATA_KEYS.forEach(k=>{o[k]=S[k]}); return o; }
+/* Pone los datos de una copia (los meses cerrados de ahora siguen cerrados). Si la copia es anterior a la v5, pasa las deudas al formato nuevo. */
+function applyRestored(o,mig){
+  const cerr=(S.closed||[]).slice(); applyData(o); if(mig) migrateV5();
+  S.closed=Array.from(new Set((S.closed||[]).concat(cerr))); ensureCards(); applyPlans(); applyFixed();
+}
+/* Restaurar: primero guarda lo actual en la copia interna; si no hay lugar, no restaura.
+   Después verifica que lo restaurado quedó guardado; si no hay lugar, borra la copia interna y reintenta;
+   si igual falla, vuelve a como estaba. */
+function restoreBackup(o,mig){
+  try{ localStorage.setItem(KEY_ANTES,JSON.stringify(dataSnap({app:'mis-cuentas',v:5,exportedAt:new Date().toISOString(),antes:todayStr()}))); }
+  catch(_){ closeModal(); toast('No hay lugar para guardar una copia de lo actual; no restauré nada. Bajá una copia primero.',5000); return false; }
+  const old=keepOld();
+  applyRestored(o,mig);
+  let ok=persist()&&savedOK(), sinCopia=false;
+  if(!ok){ dropAntes(); sinCopia=true; ok=persist()&&savedOK(); }
+  if(!ok){ applyData(old); persist(); closeModal(); onData(); toast('No hubo lugar para guardar la copia restaurada; dejé todo como estaba.',5000); return false; }
+  closeModal(); onData(); toast(sinCopia?'Copia restaurada (no quedó lugar para poder deshacerla)':'Copia restaurada',sinCopia?5000:0);
+  return true;
+}
+/* Deshacer la restauración: vuelve a la copia interna (pasa por la misma revisión que un archivo). */
+function undoRestore(){
+  let d=null; try{ d=JSON.parse(localStorage.getItem(KEY_ANTES)||'null'); }catch(_){}
+  const o=isOurBackup(d)?normalizeData(d,false):null;
+  if(!o||!o.accounts.length){ render(); toast('No pude leer la copia guardada; no cambié nada.',4500); return false; }
+  const old=keepOld();
+  applyRestored(o,!(d.v>=5));
+  if(!(persist()&&savedOK())){ applyData(old); persist(); onData(); toast('No hay lugar para deshacer; no cambié nada.',4500); return false; }
+  dropAntes(); onData(); toast('Restauración deshecha');
+  return true;
+}
 /* ---------- Escritura ---------- */
 function putAcc(id,data){ const i=S.accounts.findIndex(a=>a.id===id), o=Object.assign({id:id},data); if(i>-1) S.accounts[i]=o; else S.accounts.push(o); persist(); onData(); }
 /* ---------- Gastos en cuotas: se cargan una vez y la app debita una cuota por mes ---------- */
@@ -1025,9 +1088,9 @@ function mgmtBlock(){
   let h='';
   if(S.stmts.length){
     h+='<section><h2 class="sec">Resúmenes cargados</h2><div class="list-head">'+S.stmts.slice().sort((a,b)=>a.period<b.period?1:-1).map(s=>{
-      const l=S.exp.filter(e=>e.stmt===s.id);
+      const l=S.exp.filter(e=>e.stmt===s.id), nO=S.confirmS===s.id?stmtOthers(s.id).length:0;
       const acts=S.confirmS===s.id
-        ?'<span>¿Eliminar el resumen y sus '+l.length+' consumos?</span><button class="link danger" data-act="stmt-del-yes" data-id="'+esc(s.id)+'">Sí, eliminar</button><button class="link" data-act="stmt-del-no">No</button>'
+        ?'<span>¿Eliminar el resumen y sus '+l.length+' consumos?'+(nO?' '+othersTxt(nO,' gasto para otro dueño no se borra: vuelve',' gastos para otros dueños no se borran: vuelven')+' a esperar el resumen.':'')+'</span><button class="link danger" data-act="stmt-del-yes" data-id="'+esc(s.id)+'">Sí, eliminar</button><button class="link" data-act="stmt-del-no">No</button>'
         :'<button class="link" data-act="stmt-month" data-id="'+esc(s.id)+'">Cambiar mes</button><button class="link danger" data-act="stmt-del-ask" data-id="'+esc(s.id)+'">Eliminar resumen</button>';
       return '<div class="mov"><div><div class="mov-t">'+esc(cardName(s.card))+' · '+esc(monthLabel(s.period))+'</div><div class="mov-s">'+l.length+' consumos</div></div><div class="mov-amt">'+amt(money(sumC(l.filter(e=>e.cur!=='USD'))))+(l.some(e=>e.cur==='USD')?'<div>'+amt(money(sumC(l.filter(e=>e.cur==='USD')),'USD'),'muted')+'</div>':'')+'</div><div class="mov-actions">'+acts+'</div></div>';
     }).join('')+'</div></section>';
@@ -2454,7 +2517,19 @@ function setExpCat(id,cat){
   persist(); render();
   toast(n?'Categoría guardada · también cambié '+n+' consumos parecidos':'Categoría guardada');
 }
-
+/* Eliminar un resumen: borra sus consumos y les saca la marca de resumen a los movimientos ligados.
+   Así los gastos para otros dueños vuelven a «esperando resumen» y, si se sube de nuevo, no se duplica la deuda.
+   No toca la nafta del Etios ni los saldos. Si el resumen toca un mes cerrado, no se borra. */
+const stmtOthers=id=>S.movs.filter(m=>m.stmt===id&&m.type==='out'&&isCard(m.account)&&m.for&&Object.keys(m.for).some(k=>k!==(m.owner||'yo')));
+const othersTxt=(n,uno,varios)=>n+(n===1?uno:varios);
+function delStmt(id){
+  const s=S.stmts.find(x=>x.id===id), L=S.movs.filter(m=>m.stmt===id);
+  if(s&&(isClosed(s.period)||L.some(m=>isClosed(m.date)))){ render(); toast('Ese resumen toca un mes cerrado. Reabrilo desde «Informe por dueño» para poder eliminarlo.',4500); return; }
+  const n=stmtOthers(id).length;
+  L.forEach(m=>{ delete m.stmt; });
+  S.exp=S.exp.filter(x=>x.stmt!==id); S.stmts=S.stmts.filter(x=>x.id!==id); persist(); render();
+  toast(n?'Resumen eliminado · '+othersTxt(n,' gasto para otro dueño volvió',' gastos para otros dueños volvieron')+' a esperar el resumen':'Resumen eliminado',n?4500:0);
+}
 /* ---------- Eventos ---------- */
 document.addEventListener('click',e=>{
   if(e.target.matches&&e.target.matches('[data-overlay]')){ closeModal(); return; }
@@ -2521,7 +2596,9 @@ document.addEventListener('click',e=>{
   else if(act==='more'){ S.limit+=100; render(); }
   else if(act==='export') exportBackup();
   else if(act==='import'){ const f=$('#imp-file'); if(f) f.click(); }
-  else if(act==='imp-yes'){ const cerr=(S.closed||[]).slice(); applyData(S.modal.data); S.closed=Array.from(new Set((S.closed||[]).concat(cerr))); ensureCards(); applyPlans(); applyFixed(); persist(); closeModal(); onData(); toast('Copia restaurada'); }
+  else if(act==='imp-yes') restoreBackup(S.modal.data,S.modal.mig);
+  else if(act==='antes-undo'){ if(!b.dataset.sure){ b.dataset.sure='1'; b.textContent='Tocá otra vez para deshacer'; return; } undoRestore(); }
+  else if(act==='antes-del'){ dropAntes(); render(); toast('Copia borrada'); }
   else if(act==='chart'){ S.chartAcc=id||''; render(); }
   else if(act==='owner-new') openModal('owner',{o:null});
   else if(act==='owner-edit') openModal('owner',{o:S.owners.find(x=>x.id===id)});
@@ -2568,7 +2645,7 @@ document.addEventListener('click',e=>{
   else if(act==='xdel-yes'){ S.confirmX=''; S.exp=S.exp.filter(x=>x.id!==id); persist(); render(); toast('Consumo eliminado'); }
   else if(act==='stmt-del-ask'){ S.confirmS=id; render(); }
   else if(act==='stmt-del-no'){ S.confirmS=''; render(); }
-  else if(act==='stmt-del-yes'){ S.confirmS=''; S.exp=S.exp.filter(x=>x.stmt!==id); S.stmts=S.stmts.filter(x=>x.id!==id); persist(); render(); toast('Resumen eliminado'); }
+  else if(act==='stmt-del-yes'){ S.confirmS=''; delStmt(id); }
 });
 document.addEventListener('submit',e=>{
   e.preventDefault();
@@ -2628,6 +2705,7 @@ function init(){
   try{ S.hide=localStorage.getItem('cuentas-hide')==='1'; }catch(_){}
   readHash();
   if(!loadStore()) return;
+  antesInfo(); /* borra la copia de antes de restaurar si ya venció */
   S.xPeriod='';
   applyPlans(); applyFixed(); if(ensureCards()) persist();
   onData();
@@ -2636,6 +2714,6 @@ function init(){
   try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(_){}
 }
 /* Solo para las pruebas automáticas (tests/probar.py): se activa abriendo la app con ?test en la dirección. */
-if(location.search.indexOf('test')>-1) window.__T={S:S,prePend:prePend,matchPre:matchPre,ownerBusy:ownerBusy,soloOf:soloOf,commitData:commitData,debtAge:debtAge,ensureCards:ensureCards,extraAct:extraAct,delMov:delMov,categorize:categorize,informeData:informeData,applyFixed:applyFixed,budgetSpent:budgetSpent,isClosed:isClosed,monthSpend:monthSpend,debtPairs:debtPairs,balance:balance,accById:accById,persist:persist,onData:onData,render:render,todayStr:todayStr,openModal:openModal,stmtShowReview:stmtShowReview,cardReminder:cardReminder,cardAccFor:cardAccFor,applyPlans:applyPlans,ownerBalances:ownerBalances,normalizeData:normalizeData,backupJson:backupJson};
+if(location.search.indexOf('test')>-1) window.__T={S:S,prePend:prePend,matchPre:matchPre,ownerBusy:ownerBusy,soloOf:soloOf,commitData:commitData,debtAge:debtAge,ensureCards:ensureCards,extraAct:extraAct,delMov:delMov,categorize:categorize,informeData:informeData,applyFixed:applyFixed,budgetSpent:budgetSpent,isClosed:isClosed,monthSpend:monthSpend,debtPairs:debtPairs,balance:balance,accById:accById,persist:persist,onData:onData,render:render,todayStr:todayStr,openModal:openModal,stmtShowReview:stmtShowReview,cardReminder:cardReminder,cardAccFor:cardAccFor,applyPlans:applyPlans,ownerBalances:ownerBalances,normalizeData:normalizeData,backupJson:backupJson,isOurBackup:isOurBackup,antesInfo:antesInfo,delStmt:delStmt};
 init();
 })();

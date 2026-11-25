@@ -1,9 +1,15 @@
 /* ---------- Almacenamiento en el celular ---------- */
 const KEY='mis-cuentas-v1', BK='mis-cuentas-copia';
+/* Copia interna de cómo estaba todo antes de restaurar: una sola, se borra sola a los ANTES_DIAS días
+   o cuando se baja una copia nueva a mano. */
+const KEY_ANTES='mis-cuentas-antes-de-restaurar', ANTES_DIAS=30;
+/* Lista única de lo que se guarda (la usan el guardado en el celular y la copia de seguridad). */
+const DATA_KEYS=['accounts','movs','owners','cards','cats','rules','stmts','exp','hlds','ops','claims','plans','fixed','budgets','goals','closed'];
+function dataSnap(head){ const o=Object.assign({},head); DATA_KEYS.forEach(k=>{o[k]=S[k]}); o.pc=1; return o; }
 let storeOK=true;
 function persist(){
   try{
-    localStorage.setItem(KEY,JSON.stringify({v:5,accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans,fixed:S.fixed,budgets:S.budgets,goals:S.goals,closed:S.closed,pc:1}));
+    localStorage.setItem(KEY,JSON.stringify(dataSnap({v:5})));
     storeOK=true; return true;
   }catch(_){ storeOK=false; return false; }
 }
@@ -113,7 +119,7 @@ function autoBackupDue(){
 }
 function armAutoBackup(){
   /* Se dispara después del toque (no al apoyar el dedo): si se redibuja la pantalla entre el apoyo y el toque, se perdía el primer toque. */
-  const go=()=>{ document.removeEventListener('click',go,true); setTimeout(()=>{ if(!S.error&&autoBackupDue()) exportBackup('Copia automática descargada'); },0); };
+  const go=()=>{ document.removeEventListener('click',go,true); setTimeout(()=>{ if(!S.error&&autoBackupDue()) exportBackup('Copia automática descargada',true); },0); };
   document.addEventListener('click',go,true);
 }
 function backupBlock(){
@@ -122,6 +128,7 @@ function backupBlock(){
     +'<p class="muted" style="margin:0 0 8px"><strong style="color:var(--ink)">Copia automática (solo en el celular):</strong> cada '+AUTO_BK_DAYS+' días, la primera vez que tocás la app se descarga sola una copia en la carpeta Descargas del celular. Podés borrar las viejas y quedarte con las últimas.</p>'
     +'<p class="muted" style="margin:0 0 8px">«Enviar copia a Drive» abre el menú de compartir: elegís Drive y una carpeta, y queda guardada fuera del celular. Tocá ese botón cuando la app te avise.</p>'
     +'<p style="margin:0 0 10px">'+(l?'Última copia: '+fmtDate(l):'Todavía no hiciste ninguna copia.')+'</p>'
+    +antesBlock()
     +'<div class="actions">'+(canShareFile()?'<button class="btn primary" data-act="share-bk">Enviar copia a Drive</button>':'')+'<button class="btn" data-act="export">Guardar copia en el celular</button><button class="btn ghost" data-act="import">Restaurar copia</button></div>'
     +'<input type="file" id="imp-file" accept=".json,application/json" hidden></section>';
 }
@@ -136,13 +143,15 @@ async function shareBackup(){
     toast('Copia enviada'); render();
   }catch(e){ if(e&&e.name!=='AbortError') toast('No se pudo enviar la copia'); }
 }
-function backupJson(){ return JSON.stringify({v:5,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans,fixed:S.fixed,budgets:S.budgets,goals:S.goals,closed:S.closed,pc:1}); }
-function exportBackup(msg){
-  const data=JSON.stringify({v:5,exportedAt:new Date().toISOString(),accounts:S.accounts,movs:S.movs,owners:S.owners,cards:S.cards,cats:S.cats,rules:S.rules,stmts:S.stmts,exp:S.exp,hlds:S.hlds,ops:S.ops,claims:S.claims,plans:S.plans,fixed:S.fixed,budgets:S.budgets,goals:S.goals,closed:S.closed,pc:1});
+function backupJson(){ return JSON.stringify(dataSnap({app:'mis-cuentas',v:5,exportedAt:new Date().toISOString()})); }
+/* auto=true: copia automática (no borra la copia interna de antes de restaurar). */
+function exportBackup(msg,auto){
+  const data=backupJson();
   const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
   const a=document.createElement('a'); a.href=url; a.download='mis-cuentas-'+todayStr()+'.json';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
   try{ localStorage.setItem(BK,todayStr()); }catch(_){}
+  if(auto!==true) dropAntes();
   toast(typeof msg==='string'?msg:'Copia descargada'); render();
 }
 function readImport(inp){
@@ -151,9 +160,10 @@ function readImport(inp){
   r.onload=()=>{
     try{
       const d=JSON.parse(String(r.result));
+      if(!isOurBackup(d)) throw new Error('ajeno');
       const o=normalizeData(d,false);
       if(!o.accounts.length) throw new Error('vacío');
-      openModal('imp',{data:o});
+      openModal('imp',{data:o,mig:!(d.v>=5)});
     }catch(_){ toast('Ese archivo no es una copia de Mis cuentas'); }
   };
   r.onerror=()=>toast('No se pudo leer el archivo');
@@ -161,6 +171,59 @@ function readImport(inp){
 }
 function impModal(d){
   const o=d.data;
-  return '<div class="sheet"><h2>Restaurar copia</h2><p class="hint">La copia tiene '+o.accounts.length+' cuentas, '+o.movs.length+' movimientos y '+o.exp.length+' consumos de tarjeta. Va a reemplazar todo lo que hay ahora en este celular ('+S.accounts.length+' cuentas, '+S.movs.length+' movimientos y '+S.exp.length+' consumos).</p>'+((S.closed||[]).length?'<p class="hint">Los meses cerrados ('+S.closed.map(monthLabel).join(', ')+') siguen cerrados, pero lo que hay adentro vuelve a como estaba en la copia.</p>':'')+'<div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button><button type="button" class="btn danger" data-act="imp-yes">Reemplazar todo</button></div></div>';
+  const menos=S.movs.length-o.movs.length;
+  return '<div class="sheet"><h2>Restaurar copia</h2><p class="hint">La copia tiene '+o.accounts.length+' cuentas, '+o.movs.length+' movimientos y '+o.exp.length+' consumos de tarjeta. Va a reemplazar todo lo que hay ahora en este celular ('+S.accounts.length+' cuentas, '+S.movs.length+' movimientos y '+S.exp.length+' consumos).</p>'+(menos>0?'<p class="note warn" style="margin:0 0 10px"><strong>Ojo: la copia tiene '+menos+(menos===1?' movimiento':' movimientos')+' menos que lo que hay ahora. Si la restaurás, se pierden (después podés deshacerlo).</strong></p>':'')+((S.closed||[]).length?'<p class="hint">Los meses cerrados ('+S.closed.map(monthLabel).join(', ')+') siguen cerrados, pero lo que hay adentro vuelve a como estaba en la copia.</p>':'')+'<div class="sheet-actions"><button type="button" class="btn" data-act="close">Cancelar</button><button type="button" class="btn danger" data-act="imp-yes">Reemplazar todo</button></div></div>';
 }
-
+/* ¿Es una copia de Mis cuentas? Las nuevas traen app:'mis-cuentas'. Las viejas (sin marca) se aceptan si traen
+   versión, fecha de exportación, lista de movimientos y al menos una cuenta con id y nombre.
+   Se revisa el archivo tal como vino, ANTES de completarlo con valores por defecto. */
+function isOurBackup(d){
+  if(!d||typeof d!=='object'||Array.isArray(d)) return false;
+  if('app' in d) return d.app==='mis-cuentas';
+  return typeof d.v==='number'&&typeof d.exportedAt==='string'&&Array.isArray(d.movs)&&Array.isArray(d.accounts)&&d.accounts.some(a=>a&&typeof a.id==='string'&&typeof a.name==='string');
+}
+function dropAntes(){ try{ localStorage.removeItem(KEY_ANTES); }catch(_){} }
+/* Fecha de la copia interna de antes de restaurar, o null si no hay. Si ya venció, la borra. */
+function antesInfo(){
+  let d=null; try{ d=JSON.parse(localStorage.getItem(KEY_ANTES)||'null'); }catch(_){ return null; }
+  if(!d||typeof d.antes!=='string') return null;
+  if(daysBetween(d.antes,todayStr())>=ANTES_DIAS){ dropAntes(); return null; }
+  return {fecha:d.antes};
+}
+function antesBlock(){
+  const a=antesInfo(); if(!a) return '';
+  return '<div class="note" style="margin:0 0 10px"><p style="margin:0 0 8px;color:var(--ink)">Antes de restaurar el '+fmtDate(a.fecha,true)+' guardé cómo estaba todo.</p><div class="actions"><button class="btn danger" data-act="antes-undo">Deshacer la restauración</button><button class="btn ghost" data-act="antes-del">Borrar esa copia</button></div></div>';
+}
+/* ¿Quedó bien guardado en el celular lo que hay en pantalla? */
+function savedOK(){ try{ const d=JSON.parse(localStorage.getItem(KEY)); return !!d&&Array.isArray(d.movs)&&d.movs.length===S.movs.length&&Array.isArray(d.accounts)&&d.accounts.length===S.accounts.length; }catch(_){ return false; } }
+function keepOld(){ const o={loans:S.loans}; DATA_KEYS.forEach(k=>{o[k]=S[k]}); return o; }
+/* Pone los datos de una copia (los meses cerrados de ahora siguen cerrados). Si la copia es anterior a la v5, pasa las deudas al formato nuevo. */
+function applyRestored(o,mig){
+  const cerr=(S.closed||[]).slice(); applyData(o); if(mig) migrateV5();
+  S.closed=Array.from(new Set((S.closed||[]).concat(cerr))); ensureCards(); applyPlans(); applyFixed();
+}
+/* Restaurar: primero guarda lo actual en la copia interna; si no hay lugar, no restaura.
+   Después verifica que lo restaurado quedó guardado; si no hay lugar, borra la copia interna y reintenta;
+   si igual falla, vuelve a como estaba. */
+function restoreBackup(o,mig){
+  try{ localStorage.setItem(KEY_ANTES,JSON.stringify(dataSnap({app:'mis-cuentas',v:5,exportedAt:new Date().toISOString(),antes:todayStr()}))); }
+  catch(_){ closeModal(); toast('No hay lugar para guardar una copia de lo actual; no restauré nada. Bajá una copia primero.',5000); return false; }
+  const old=keepOld();
+  applyRestored(o,mig);
+  let ok=persist()&&savedOK(), sinCopia=false;
+  if(!ok){ dropAntes(); sinCopia=true; ok=persist()&&savedOK(); }
+  if(!ok){ applyData(old); persist(); closeModal(); onData(); toast('No hubo lugar para guardar la copia restaurada; dejé todo como estaba.',5000); return false; }
+  closeModal(); onData(); toast(sinCopia?'Copia restaurada (no quedó lugar para poder deshacerla)':'Copia restaurada',sinCopia?5000:0);
+  return true;
+}
+/* Deshacer la restauración: vuelve a la copia interna (pasa por la misma revisión que un archivo). */
+function undoRestore(){
+  let d=null; try{ d=JSON.parse(localStorage.getItem(KEY_ANTES)||'null'); }catch(_){}
+  const o=isOurBackup(d)?normalizeData(d,false):null;
+  if(!o||!o.accounts.length){ render(); toast('No pude leer la copia guardada; no cambié nada.',4500); return false; }
+  const old=keepOld();
+  applyRestored(o,!(d.v>=5));
+  if(!(persist()&&savedOK())){ applyData(old); persist(); onData(); toast('No hay lugar para deshacer; no cambié nada.',4500); return false; }
+  dropAntes(); onData(); toast('Restauración deshecha');
+  return true;
+}

@@ -1,7 +1,7 @@
 # Pruebas automáticas de "Mis cuentas". Usan datos inventados (no tocan los tuyos).
 # Uso:   python tests/probar.py
 # Hace falta: Python con Playwright (ya instalado). Termina con "TODO OK" o con la lista de lo que falló.
-import os, sys, time, subprocess, datetime, csv, io, socket
+import os, sys, time, subprocess, datetime, csv, io, socket, json
 from playwright.sync_api import sync_playwright
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -291,6 +291,25 @@ def main():
             igual = ev("()=>__T.S.movs.filter(m=>m.cents===555500).map(m=>!!m.stmt)")
             chequear('y no se duplica: queda un solo movimiento, ya vinculado al resumen', igual == [True], igual)
 
+            print('Eliminar un resumen')
+            sid = ev("()=>__T.S.movs.find(m=>m.id==='pre1').stmt")
+            ev("()=>{__T.S.closed=['2026-09']}")
+            ev("id=>__T.delStmt(id)", sid)
+            chequear('con el mes cerrado no se elimina el resumen ni se toca el gasto', ev("id=>__T.S.stmts.some(s=>s.id===id)&&__T.S.movs.find(m=>m.id==='pre1').stmt===id", sid))
+            chequear('y avisa que hay que reabrir el mes', 'mes cerrado' in ev("()=>document.querySelector('#toast').textContent"))
+            ev("()=>{__T.S.closed=[]}")
+            ev("id=>{__T.S.modal=null;document.querySelector('#modal').innerHTML='';__T.S.confirmS=id;__T.S.tab='tarjetas';__T.render()}", sid)
+            chequear('la pregunta aclara que el gasto para otro dueño no se borra', '1 gasto para otro dueño no se borra: vuelve a esperar el resumen' in ev("()=>document.querySelector('#view').textContent"))
+            pg.click('[data-act=stmt-del-yes]'); pg.wait_for_timeout(200)
+            chequear('al eliminar avisa que volvió a esperar el resumen', 'volvió a esperar el resumen' in ev("()=>document.querySelector('#toast').textContent"))
+            chequear('el gasto para otro dueño vuelve a «esperando resumen»', ev("id=>!__T.S.stmts.some(s=>s.id===id)&&__T.prePend().some(m=>m.id==='pre1')", sid))
+            ev("""()=>{const T=__T; T.openModal('stmt',{step:2,paid:'pesos',card:'visa2',period:'2026-09',text:'',totalStr:'',cardAcc:'',rows:[
+                {inc:true,date:'2026-09-09',desc:'COMPRA ANTICIPADA SA',amtStr:'5555,00',cents:555500,cat:'sin',auto:'sin',cuota:'',usd:false,flag:''}]});
+              T.stmtShowReview();}""")
+            pg.click('[data-act=rv-import]'); pg.wait_for_timeout(400)
+            igual = ev("()=>__T.S.movs.filter(m=>m.cents===555500).map(m=>!!m.stmt)")
+            chequear('al volver a subir el resumen queda un solo $5.555 (sin duplicar la deuda)', igual == [True] and ev("()=>__T.S.exp.filter(e=>e.cents===555500).length") == 0, igual)
+
             print('Reconocimiento del resumen: casos de la revisión')
             def abrir(periodo, filas):
                 ev("([p,f])=>{const T=__T; T.S.cards=[{id:'visa3',name:'BBVA Visa'}]; T.openModal('stmt',{step:2,paid:'pesos',card:'visa3',period:p,text:'',totalStr:'',cardAcc:'',rows:f}); T.stmtShowReview();}", [periodo, filas])
@@ -343,6 +362,63 @@ def main():
 
             rm = ev("()=>['cafe 500 reserva montonera','mp reserva montonera 700','almuerzo catequesis 12000 efe','gasto montonera 500 efectivo'].map(t=>{const r=QuickMov.parse(t,{accounts:__T.S.accounts,owners:__T.S.owners,today:'2026-11-23'});return [r.acc,r.owner]})")
             chequear('la caja elige la cuenta «Reserva Montonera» y no la toma solo como dueño', rm[0][0]=='mercado-pago-reserva-montonera' and rm[1][0]=='mercado-pago-reserva-montonera' and rm[2]==['efectivo','catequesis'] and rm[3]==['efectivo','montonera'], rm)
+
+            print('Restaurar una copia')
+            ev("()=>{__T.S.modal=null;document.querySelector('#modal').innerHTML='';__T.S.closed=[];__T.S.tab='ajustes';__T.render()}")
+            ANTES = 'mis-cuentas-antes-de-restaurar'
+            def subir(obj):
+                ev("()=>{document.querySelector('#toast').textContent='';__T.S.modal=null;document.querySelector('#modal').innerHTML=''}")
+                pg.set_input_files('#imp-file', files=[{'name': 'copia.json', 'mimeType': 'application/json', 'buffer': json.dumps(obj).encode('utf-8')}])
+                pg.wait_for_timeout(300)
+                return ev("()=>document.querySelector('#toast').textContent"), ev("()=>document.querySelector('#modal').textContent")
+            ajenos = [{}, [{'id': 'e1', 'fh': '2027-02-03T09:10', 'litros': 40, 'plata': 52000, 'km': 85200}], {'foo': 1},
+                      {'app': 'etios', 'v': 5, 'exportedAt': '2026-11-01T00:00:00Z', 'movs': [], 'accounts': [{'id': 'x', 'name': 'X'}]}]
+            res = [subir(a) for a in ajenos]
+            chequear('rechaza un archivo vacío, una lista (como el del Etios), uno cualquiera y uno de otra app', all(t == 'Ese archivo no es una copia de Mis cuentas' and 'Restaurar copia' not in m for t, m in res), res)
+            copia = json.loads(ev("()=>__T.backupJson()"))
+            chequear('las copias nuevas llevan la marca de Mis cuentas', copia.get('app') == 'mis-cuentas')
+            n_ahora = ev("()=>__T.S.movs.length")
+            t, m = subir(copia)
+            chequear('acepta una copia nueva (y no avisa de menos movimientos si trae los mismos)', 'Restaurar copia' in m and 'menos que lo que hay ahora' not in m, (t, m[:200]))
+            vieja = dict(copia); del vieja['app']; vieja['v'] = 3
+            t, m = subir(vieja)
+            chequear('acepta una copia vieja sin marca', 'Restaurar copia' in m, (t, m[:200]))
+            v4 = {'v': 4, 'exportedAt': '2026-10-01T00:00:00.000Z', 'accounts': [{'id': 'efectivo', 'name': 'Efectivo', 'initial': 0}],
+                  'movs': [{'id': 'v4a', 'type': 'in', 'account': 'efectivo', 'cents': 1000000, 'date': '2026-10-01', 'note': 'Ingreso viejo', 'owner': 'yo'},
+                           {'id': 'v4b', 'type': 'out', 'account': 'efectivo', 'cents': 300000, 'date': '2026-10-02', 'note': 'Gasto viejo', 'owner': 'catequesis'}]}
+            t, m = subir(v4)
+            chequear('si la copia tiene menos movimientos, la pregunta avisa cuántos se pierden', ('Ojo: la copia tiene %d movimientos menos que lo que hay ahora' % (n_ahora - 2)) in m, m[:400])
+            ids_antes = ev("()=>JSON.parse(localStorage.getItem('mis-cuentas-v1')).movs.map(m=>m.id).sort().join()")
+            pg.click('[data-act=imp-yes]'); pg.wait_for_timeout(300)
+            interna = ev("k=>JSON.parse(localStorage.getItem(k)||'null')", ANTES)
+            chequear('antes de restaurar guarda lo actual en una copia interna con fecha', bool(interna) and len(interna['movs']) == n_ahora and interna.get('antes') == ev("()=>__T.todayStr()"), interna and len(interna['movs']))
+            chequear('una copia anterior a la v5 queda con las deudas pasadas al formato nuevo', ev("()=>__T.S.movs.some(m=>m.kind==='loan'&&m.owner==='yo'&&m.toOwner==='catequesis'&&m.cents===300000)&&Object.values(__T.ownerBalances(__T.accById('efectivo'))).every(v=>v>=0)"))
+            ev("()=>{__T.S.tab='ajustes';__T.render()}")
+            vista = ev("()=>document.querySelector('#view').textContent")
+            chequear('Ajustes ofrece deshacer la restauración', 'guardé cómo estaba todo' in vista and 'Deshacer la restauración' in vista and 'Borrar esa copia' in vista)
+            pg.click('[data-act=antes-undo]'); pg.wait_for_timeout(150)
+            chequear('deshacer pide un segundo toque', ev("()=>__T.S.movs.length") != n_ahora and 'Tocá otra vez' in ev("()=>document.querySelector('[data-act=antes-undo]').textContent"))
+            pg.click('[data-act=antes-undo]'); pg.wait_for_timeout(300)
+            chequear('deshacer devuelve todo como estaba y borra la copia interna', ev("()=>__T.S.movs.length") == n_ahora and ev("k=>localStorage.getItem(k)", ANTES) is None and ev("()=>JSON.parse(localStorage.getItem('mis-cuentas-v1')).movs.map(m=>m.id).sort().join()") == ids_antes)
+            ev("""k=>{window.__setOrig=Storage.prototype.setItem;Storage.prototype.setItem=function(a,b){ if(a===k) throw new DOMException('lleno','QuotaExceededError'); return window.__setOrig.call(this,a,b); };}""", ANTES)
+            guardado_antes = ev("()=>localStorage.getItem('mis-cuentas-v1')")
+            ev("()=>{__T.S.tab='ajustes';__T.render()}")
+            subir(v4)
+            pg.click('[data-act=imp-yes]'); pg.wait_for_timeout(300)
+            ev("()=>{Storage.prototype.setItem=window.__setOrig}")
+            chequear('sin lugar para la copia interna no restaura nada y avisa', ev("()=>__T.S.movs.length") == n_ahora and ev("()=>localStorage.getItem('mis-cuentas-v1')") == guardado_antes and 'no restauré nada' in ev("()=>document.querySelector('#toast').textContent"))
+            ev("()=>{__T.S.tab='ajustes';__T.render()}")
+            subir(copia)
+            pg.click('[data-act=imp-yes]'); pg.wait_for_timeout(300)
+            ev("k=>{const d=JSON.parse(localStorage.getItem(k));d.antes='2026-10-01';localStorage.setItem(k,JSON.stringify(d))}", ANTES)
+            chequear('la copia interna se borra sola pasados 30 días', ev("()=>__T.antesInfo()") is None and ev("k=>localStorage.getItem(k)", ANTES) is None)
+            ev("()=>{__T.S.tab='ajustes';__T.render()}")
+            subir(copia)
+            pg.click('[data-act=imp-yes]'); pg.wait_for_timeout(300)
+            ev("()=>{__T.S.tab='ajustes';__T.render()}")
+            with pg.expect_download():
+                pg.click('[data-act=export]')
+            chequear('al bajar una copia nueva se borra la copia interna', ev("k=>localStorage.getItem(k)", ANTES) is None)
 
             print('Pantallas')
             for h in ['resumen', 'movimientos', 'tarjetas', 'deudas', 'analisis', 'ajustes']:
